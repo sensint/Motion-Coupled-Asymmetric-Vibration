@@ -1,1 +1,12 @@
+http://little-scale.blogspot.com/2020/06/teensy-36-with-hc-sr04-distance-sensor.html
+schematic
 
+https://github.com/little-scale/arduino-sketches/blob/master/Distance_Sensor_HCSR04_1_Serial_Output.ino
+source code
+
+DATASHEETS :
+https://www.pjrc.com/store/teensy40.html
+teensy 4.0 datasheet
+
+https://cdn.sparkfun.com/datasheets/Sensors/Proximity/HCSR04.pdf
+ultrasonic sensor datasheet
