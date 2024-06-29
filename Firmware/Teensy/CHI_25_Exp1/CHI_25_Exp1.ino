@@ -10,8 +10,7 @@
 
 // TO DO MAIN:
 // Change the max and min of sensor to what the sensor actually measures
-// Urgent: Check if you can modulate the pseudo forces
-// Looking at different mappings
+// Adding the duration of the condition to be played (n seconds)
 // To decide whether to stop the current pulse and play the next or just to play the next after finishing the current pulse
 
 #define VERSION "v1.1.0"
