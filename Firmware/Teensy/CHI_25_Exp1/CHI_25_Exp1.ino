@@ -11,6 +11,8 @@
 // TO DO MAIN:
 // Change the max and min of sensor to what the sensor actually measures
 // Adding the duration of the condition to be played (n seconds)
+// Having the other 2 conditions
+// Storing whether it is vibrating (TO CHECK)
 // To decide whether to stop the current pulse and play the next or just to play the next after finishing the current pulse
 
 #define VERSION "v1.1.0"
@@ -84,6 +86,7 @@ int16_t negDat[256];
 #define Amplitude_ARRAYSIZE 2  // Change if we decide on 3 levels of amplitude
 // float receivedInts[Amplitude_ARRAYSIZE] = { 0.4, 0.7, 1.0 };
 float receivedInts[Amplitude_ARRAYSIZE] = { 0.5, 1.0 };
+char full_report[160]; // Define a buffer for the full report
 
 //=========== Continuous Vibration ===========
 const long kContinuousVibrationDuration = 3000;
@@ -100,7 +103,6 @@ int stepPseudoForces = 0;  // Step variable to track the current step in the pse
 // Timing and control variables for continuous vibration
 unsigned long previousContinuousVibrationMillis = 0;
 int repetitionCountContinuousVibration = 0;
-bool is_vibrating_continuous = false;
 
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
@@ -184,6 +186,7 @@ void GeneratePseudoForces() {
         signal.amplitude(kSignalAsymAmp);
         previousPseudoForcesMillis = currentMillis;
         stepPseudoForces = 1;
+        is_vibrating = true;
         // Serial.println("Pseudo Forces: Starting positive vibration");
       }
       break;
@@ -194,6 +197,7 @@ void GeneratePseudoForces() {
         signal.amplitude(0);
         previousPseudoForcesMillis = currentMillis;
         stepPseudoForces = 2;
+        is_vibrating = false;
       }
       break;
 
@@ -206,6 +210,7 @@ void GeneratePseudoForces() {
         previousPseudoForcesMillis = currentMillis;
         stepPseudoForces = 3;
         // Serial.println("Pseudo Forces: Starting negative vibration");
+        is_vibrating = true;
       }
       break;
 
@@ -215,6 +220,7 @@ void GeneratePseudoForces() {
         signal.amplitude(0);
         previousPseudoForcesMillis = currentMillis;
         stepPseudoForces = 4;
+        is_vibrating = false;
       }
       break;
 
@@ -236,14 +242,14 @@ void GeneratePseudoForces() {
 void GenerateContinuousVibration() {
   unsigned long currentMillis = millis();
 
-  if (!is_vibrating_continuous) {
+  if (!is_vibrating) {
     if (repetitionCountContinuousVibration < kContinuousVibrationRepetition) {
       if (currentMillis - previousContinuousVibrationMillis >= kContinuousVibrationDuration) {
         signal.begin(WAVEFORM_SINE);
         signal.frequency(kSignalFrequencyHz);
         signal.amplitude(kSignalContinuousAmp);
         previousContinuousVibrationMillis = currentMillis;
-        is_vibrating_continuous = true;
+        is_vibrating = true;
         // Serial.println("Continuous Vibration: Start");
       }
     } else {
@@ -255,7 +261,7 @@ void GenerateContinuousVibration() {
       signal.amplitude(0);
       previousContinuousVibrationMillis = currentMillis;
       delay(kNoVibrationDuration);  // Delay for the pause
-      is_vibrating_continuous = false;
+      is_vibrating = false;
       repetitionCountContinuousVibration++;
       // Serial.println("Continuous Vibration: Stop");
     }
@@ -532,4 +538,5 @@ snprintf(report, sizeof(report), "Status = %3u, Distance = %5u mm, Signal = %6u 
          results.distance_mm,
          results.signal_per_spad_kcps);
 Serial.print(report);
+snprintf(full_report, sizeof(full_report), "%s, Vibrating = %1u\r\n", report, is_vibrating);
 }
