@@ -43,6 +43,8 @@ enum Mode {
 };
 
 Mode currentMode = MODE_4;  // Initialize current mode to MODE_3
+char selectedMode = '\0';
+bool modeRunning = false;
 
 //=========== Laser Sensing ===========
 #define DEV_I2C Wire2
@@ -56,6 +58,22 @@ static constexpr float kFilterWeight = 0.7;
 static constexpr uint32_t kSensorMinValue = 0;
 static constexpr uint32_t kSensorMaxValue = 830;
 static constexpr uint32_t kSensorJitterThreshold = 30;
+
+//============================= STORING ===========================
+const int maxDataPoints = 30000;
+struct DataPoint {
+  unsigned long timestamp;
+  unsigned long distance;
+  int condition;
+};
+
+DataPoint data[maxDataPoints];
+int dataIndex = 0;
+
+// Timer Variables
+unsigned long startRecordingMillis;
+unsigned long currentRecordingMillis;
+const unsigned long conditionPeriod = 30000; // 30 seconds
 
 //=========== audio variables ===========
 AudioSynthWaveform signal;
@@ -74,8 +92,6 @@ bool recording_enabled = false;
 //=========== signal generator ===========
 static uint16_t kNumberOfBins = 50;
 static constexpr short kSignalWaveform = static_cast<short>(Waveform::kArbitrary);
-static constexpr short kSignalContinuousWaveform = static_cast<short>(Waveform::kSawtooth);
-static constexpr short kSignalContinuousWaveform2 = static_cast<short>(Waveform::kSawtoothReverse);
 static uint32_t kSignalDurationUs = 25 * 1000;  // in microseconds
 static float kSignalFrequencyHz = 40.f;
 static float kSignalAsymAmp = 1.f;
@@ -106,9 +122,6 @@ int repetitionCountContinuousVibration = 0;
 
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
-
-//=========== helper functions ===========
-inline void SetupSerial() __attribute__((always_inline));
 
 void SetupSerial() {
   while (!Serial && millis() < 2000)
@@ -326,6 +339,57 @@ void MappingFunction() {
   }
 }
 
+// void endCondition() {
+//   // Print the collected data to serial
+//   for (int i = 0; i < dataIndex; i++) {
+//     Serial.print("Condition: ");
+//     Serial.print(data[i].condition);
+//     Serial.print(", Time: ");
+//     Serial.print(data[i].timestamp);
+//     Serial.print(" ms, Distance: ");
+//     Serial.println(data[i].distance);
+//   }
+
+//   // Optionally, reset the condition or stop the loop
+//   currentCondition = 0;
+// }
+
+void handleSerialInput(char serial_c) {
+  if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
+    if (Serial.available()) {
+      char amplitude_char = Serial.read();
+      switch (amplitude_char) {
+        case '0':
+          signal.amplitude(receivedInts[0]);
+          break;
+        case '1':
+          signal.amplitude(receivedInts[1]);
+          break;
+        default:
+          Serial.println("Invalid Amplitude Command");
+          break;
+      }
+    }
+  } else if (serial_c == 'x') {
+    if (Serial.available()) {
+      float kSignalFrequencyHz = Serial.parseFloat();
+      signal.frequency(kSignalFrequencyHz);
+      Serial.printf("new frequency: %dHz\n", (int)kSignalFrequencyHz);
+    }
+  } else if (serial_c == 'y') {
+    if (Serial.available()) {
+      uint16_t kNumberOfBins = (uint16_t)Serial.parseFloat();
+      Serial.printf("new number of bins: %d\n", (int)kNumberOfBins);
+    }
+  } else if (serial_c == 'z') {
+    if (Serial.available()) {
+      uint32_t kSignalDurationUs = (uint32_t)Serial.parseInt();
+      Serial.printf("new pulse duration: %dus\n", (int)kSignalDurationUs);
+    }
+  }
+}
+
+
 void setup() {
   SetupSerial();
   InitializeSensor();
@@ -333,6 +397,7 @@ void setup() {
   for (int i = 0; i < 256; i++) {
     negDat[i] = -dat[i];
   }
+  memset(data, 0, sizeof(data));
 }
 
 void loop() {
@@ -358,179 +423,38 @@ void loop() {
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
-    switch (serial_c) {
-      case 'a': {
-          currentMode = MODE_1;
-          // Serial.println("Mode 1: Continuous Pseudo Forces");
-          if (Serial.available()) {
-            char amplitude_char = Serial.read();
-            switch (amplitude_char) {
-              case '0':
-                kSignalAsymAmp = receivedInts[0];
-                // Serial.println("Setting Amplitude to 0.5");
-                signal.amplitude(kSignalAsymAmp);
-                break;
-              case '1':
-                kSignalAsymAmp = receivedInts[1];
-                // Serial.println("Setting Amplitude to 1.0");
-                signal.amplitude(kSignalAsymAmp);  // Assuming signal is defined elsewhere
-                break;
-              default:
-                // Serial.println("Invalid Amplitude Command");
-                break;
-            }
-          }
-        break;
+    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e'){
+      startRecordingMillis = millis();
+      selectedMode = serial_c;
+      modeRunning = true;
     }
-    case 'b': {
-          currentMode = MODE_2;
-          // Serial.println("Mode 2: Continuous Vibration");
-          if (Serial.available()) {
-            char amplitude_char = Serial.read();
-            switch (amplitude_char) {
-              case '0':
-                kSignalAsymAmp = receivedInts[0];
-                // Serial.println("Setting Amplitude to 0.5");
-                signal.amplitude(kSignalAsymAmp);
-                break;
-              case '1':
-                kSignalAsymAmp = receivedInts[1];
-                // Serial.println("Setting Amplitude to 1.0");
-                signal.amplitude(kSignalAsymAmp);  // Assuming signal is defined elsewhere
-                break;
-              default:
-                // Serial.println("Invalid Amplitude Command");
-                break;
-            }
-          }
-        break;
-    }
-    case 'c': {
-          currentMode = MODE_3;
-          // Serial.println("Mode 3: Motion Coupled Pseudo Forces");
-          if (Serial.available()) {
-            char amplitude_char = Serial.read();
-            switch (amplitude_char) {
-              case '0':
-                kSignalAsymAmp = receivedInts[0];
-                // Serial.println("Setting Amplitude to 0.5");
-                signal.amplitude(kSignalAsymAmp);
-                break;
-              case '1':
-                kSignalAsymAmp = receivedInts[1];
-                // Serial.println("Setting Amplitude to 1.0");
-                signal.amplitude(kSignalAsymAmp);  // Assuming signal is defined elsewhere
-                break;
-              default:
-                // Serial.println("Invalid Amplitude Command");
-                break;
-            }
-          }
-        break;
-    }
-    case 'd': {
-          currentMode = MODE_4;
-          // Serial.println("Mode 4: Motion Coupled Vibration");
-          if (Serial.available()) {
-            char amplitude_char = Serial.read();
-            switch (amplitude_char) {
-              case '0':
-                kSignalAsymAmp = receivedInts[0];
-                // Serial.println("Setting Amplitude to 0.5");
-                signal.amplitude(kSignalAsymAmp);
-                break;
-              case '1':
-                kSignalAsymAmp = receivedInts[1];
-                // Serial.println("Setting Amplitude to 1.0");
-                signal.amplitude(kSignalAsymAmp);  // Assuming signal is defined elsewhere
-                break;
-              default:
-                // Serial.println("Invalid Amplitude Command");
-                break;
-            }
-          }
-        break;
-    }
-    case 'e': {
-          currentMode = MODE_5;
-          // Serial.println("Mode 5: Random");
-          if (Serial.available()) {
-            char amplitude_char = Serial.read();
-            switch (amplitude_char) {
-              case '0':
-                kSignalAsymAmp = receivedInts[0];
-                // Serial.println("Setting Amplitude to 0.5");
-                signal.amplitude(kSignalAsymAmp);
-                break;
-              case '1':
-                kSignalAsymAmp = receivedInts[1];
-                // Serial.println("Setting Amplitude to 1.0");
-                signal.amplitude(kSignalAsymAmp);  // Assuming signal is defined elsewhere
-                break;
-              default:
-                // Serial.println("Invalid Amplitude Command");
-                break;
-            }
-          }
-        break;
-    }
-    case 'r':
-      currentMode = MODE_Debug;
-      Serial.println("Debug Mode");
-      break;
-    case 'x':
-      {
-        if (Serial.available()) {
-          kSignalFrequencyHz = Serial.parseFloat();
-          signal.frequency(kSignalFrequencyHz);
-          Serial.printf("new frequency: %dHz\n", (int)kSignalFrequencyHz);
-        }
-        break;
-      }
-    case 'y':
-      {  // Bins
-        if (Serial.available()) {
-          kNumberOfBins = (uint16_t)Serial.parseFloat();
-          Serial.printf("new number of bins: %d\n", (int)kNumberOfBins);
-        }
-        break;
-      }
-    case 'z':
-      {  // pulse duration
-        if (Serial.available()) {
-          kSignalDurationUs = (uint32_t)Serial.parseInt();
-          Serial.printf("new pulse duration: %dus\n", (int)kSignalDurationUs);
-        }
-        break;
-      }
+    handleSerialInput(serial_c);
   }
-}
 
-switch (currentMode) {
-  case MODE_1:
-    GeneratePseudoForces();
-    break;
-  case MODE_2:
-    GenerateContinuousVibration();
-    break;
-  case MODE_3:
-    GenerateMotionCoupledPseudoForces();
-    break;
-  case MODE_4:
-    GenerateMotionCoupledVibration();
-    break;
-  case MODE_5:
-    GeneratePseudoForces();
-    break;
-  case MODE_Debug:
-    measuredDistance = results.distance_mm;  // make this fast
-    snprintf(report, sizeof(report), "Status = %3u, Distance = %5u mm, Signal = %6u kcps/spad\r\n",
-             results.range_status,
-             results.distance_mm,
-             results.signal_per_spad_kcps);
-    Serial.print(report);
-    break;
-}
+  if (modeRunning){
+    if (millis() - startRecordingMillis < conditionPeriod){
+      switch (selectedMode) {
+        case 'a':
+          GeneratePseudoForces();
+          break;
+        case 'b':
+          GenerateContinuousVibration();
+          break;
+        case 'c':
+          GenerateMotionCoupledPseudoForces();
+          break;
+        case 'd':
+          GenerateMotionCoupledVibration();
+          break;
+        case 'e':
+          GeneratePseudoForces();
+          break;
+      }
+    } else{
+      modeRunning = false;
+      Serial.println("Time is up!");
+    }
+  }
 
 measuredDistance = results.distance_mm;  // make this fast
 snprintf(report, sizeof(report), "Status = %3u, Distance = %5u mm, Signal = %6u kcps/spad\r\n", 
