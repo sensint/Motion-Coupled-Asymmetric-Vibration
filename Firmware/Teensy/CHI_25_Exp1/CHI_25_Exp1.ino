@@ -77,8 +77,11 @@ uint16_t last_bin_id = 0;
 bool augmentation_enabled = false;
 bool recording_enabled = false;
 
+uint16_t countVibrationsTriggered = 0;
+uint16_t saveCountofVibrationsTriggered = 0;
+
 //=========== signal generator ===========
-static uint16_t kNumberOfBins = 100;
+static uint16_t kNumberOfBins = 10;
 static constexpr short kSignalWaveform = static_cast<short>(Waveform::kArbitrary);
 static uint32_t kSignalDurationUs = 25 * 1000;  // in microseconds
 static float kSignalFrequencyHz = 40.f;
@@ -322,7 +325,7 @@ void ReplayPseudoForces() {
   static unsigned long ReplaypulseStartMillis = 0;
   static bool isVibrating = false;
 
-  if (Serial.available()) {
+  if (Serial.available() > 0) {
     String input = Serial.readStringUntil('\n');
     int commaIndex = input.indexOf(',');
     if (commaIndex > 0) {
@@ -344,7 +347,7 @@ void ReplayPseudoForces() {
       } else {
         // Calculate delay needed to match the timing
         unsigned long delayTime = timeWhenVibrates - elapsedMillisReplay;
-        delay(delayTime);          // Temporarily use delay to align with the incoming timing
+        delay(delayTime);                // Temporarily use delay to align with the incoming timing
         currentMillisReplay = millis();  // Update currentMillis after delay
         if (shouldVibrate && !isVibrating) {
           StartPulsePosPF();
@@ -362,7 +365,71 @@ void ReplayPseudoForces() {
 }
 
 void SummaryStatPseudoForces() {
-  // Write Code here
+  // Read the number of ones from the stored variable (only during condition 'a')
+  // Stitch a waveform for a duration of pulse_duration*number of ones
+  // Play that waveform continously
+  unsigned long currentMillis = millis();
+  unsigned long SummaryStatPF_duration = 1000 / kSignalFrequencyHz * saveCountofVibrationsTriggered;
+
+  switch (stepPseudoForces) {
+    case 0:  // Start positive vibration
+      if (repetitionCountPseudoForces < kpseudoForceRepetition) {
+        signal.begin(kSignalWaveform);
+        signal.arbitraryWaveform(dat, 170);
+        signal.frequency(kSignalFrequencyHz);
+        signal.amplitude(kSignalAsymAmp);
+        previousPseudoForcesMillis = currentMillis;
+        stepPseudoForces = 1;
+        is_vibrating = true;
+      }
+      break;
+
+    case 1:  // End positive vibration
+      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration) {
+        signal.frequency(0);
+        signal.amplitude(0);
+        previousPseudoForcesMillis = currentMillis;
+        stepPseudoForces = 2;
+        is_vibrating = false;
+      }
+      break;
+
+    case 2:  // Pause after positive vibration
+      if (currentMillis - previousPseudoForcesMillis >= kNoVibrationDuration) {
+        signal.begin(kSignalWaveform);
+        signal.arbitraryWaveform(negDat, 170);
+        signal.frequency(kSignalFrequencyHz);
+        signal.amplitude(kSignalAsymAmp);
+        previousPseudoForcesMillis = currentMillis;
+        stepPseudoForces = 3;
+        // Serial.println("Pseudo Forces: Starting negative vibration");
+        is_vibrating = true;
+      }
+      break;
+
+    case 3:  // End negative vibration
+      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration) {
+        signal.frequency(0);
+        signal.amplitude(0);
+        previousPseudoForcesMillis = currentMillis;
+        stepPseudoForces = 4;
+        is_vibrating = false;
+      }
+      break;
+
+    case 4:  // Pause after negative vibration
+      if (currentMillis - previousPseudoForcesMillis >= kNoVibrationDuration) {
+        repetitionCountPseudoForces = 0;
+        stepPseudoForces = 0;
+      }
+      break;
+
+    default:  // All repetitions complete
+      if (repetitionCountPseudoForces >= kpseudoForceRepetition) {
+        Serial.println("Pseudo Forces: All repetitions complete");
+      }
+      break;
+  }
 }
 
 void MappingFunction() {
@@ -417,7 +484,6 @@ void handleSerialInput(char serial_c) {
   }
 }
 
-
 void setup() {
   SetupSerial();
   InitializeSensor();
@@ -469,6 +535,7 @@ void loop() {
         case 'a':
           GenerateMotionCoupledPseudoForces();
           Serial.print(full_report);
+          countVibrationsTriggered += is_vibrating;
           break;
         case 'b':
           data[dataIndex] = { millis() - startRecordingMillis, measuredDistance, selectedMode };
@@ -501,7 +568,8 @@ void loop() {
       modeRunning = false;
       StopPulse();
       Serial.println("Time is up!");
-      if (selectedMode != 'a') {
+      saveCountofVibrationsTriggered = countVibrationsTriggered;
+        if (selectedMode != 'a') {
         for (int i = 0; i < dataIndex; i++) {
           Serial.print("Time: ");
           Serial.print(data[i].timestamp);
@@ -511,6 +579,7 @@ void loop() {
           Serial.println(data[i].condition);
         }
       }
+      countVibrationsTriggered = 0;
       dataIndex = 0;
       memset(data, 0, sizeof(data));
     }
