@@ -318,7 +318,47 @@ void GenerateMotionCoupledVibration() {
 }
 
 void ReplayPseudoForces() {
-  // Write Code here
+  static unsigned long startMillisReplay = millis();
+  static unsigned long ReplaypulseStartMillis = 0;
+  static bool isVibrating = false;
+
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    int commaIndex = input.indexOf(',');
+    if (commaIndex > 0) {
+      String timeString = input.substring(0, commaIndex);
+      String isVibratingString = input.substring(commaIndex + 1);
+
+      unsigned long timeWhenVibrates = timeString.toFloat();
+      bool shouldVibrate = isVibratingString.toInt() == 1;
+
+      unsigned long currentMillisReplay = millis();
+      unsigned long elapsedMillisReplay = currentMillisReplay - startMillisReplay;
+
+      if (elapsedMillisReplay >= timeWhenVibrates) {
+        if (shouldVibrate && !isVibrating) {
+          StartPulsePosPF();
+          ReplaypulseStartMillis = currentMillisReplay;
+          isVibrating = true;
+        }
+      } else {
+        // Calculate delay needed to match the timing
+        unsigned long delayTime = timeWhenVibrates - elapsedMillisReplay;
+        delay(delayTime);          // Temporarily use delay to align with the incoming timing
+        currentMillisReplay = millis();  // Update currentMillis after delay
+        if (shouldVibrate && !isVibrating) {
+          StartPulsePosPF();
+          ReplaypulseStartMillis = currentMillisReplay;
+          isVibrating = true;
+        }
+      }
+    }
+  }
+
+  if (isVibrating && millis() - ReplaypulseStartMillis >= 25) {
+    StopPulse();
+    isVibrating = false;
+  }
 }
 
 void SummaryStatPseudoForces() {
@@ -349,6 +389,7 @@ void handleSerialInput(char serial_c) {
           break;
         case '2':
           signal.amplitude(receivedInts[2]);
+          break;
         default:
           Serial.println("Invalid Amplitude Command");
           break;
@@ -455,6 +496,7 @@ void loop() {
       }
     } else {
       modeRunning = false;
+      StopPulse();
       Serial.println("Time is up!");
       if (selectedMode != 'a') {
         for (int i = 0; i < dataIndex; i++) {
