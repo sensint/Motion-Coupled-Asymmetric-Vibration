@@ -9,8 +9,7 @@
 #include <assert.h>
 
 // TO DO MAIN:
-// Change the max and min of sensor to what the sensor actually measures
-// Having the other 2 conditions (DO NOT REPLACE THE CURRENT CODES, JUST CREATE NEW ONES)
+// Change the max and min of sensor to what the sensor actually measure
 // To decide whether to stop the current pulse and play the next or just to play the next after finishing the current pulse (TO TEST by Trying out)
 
 #define VERSION "v1.1.0"
@@ -81,7 +80,7 @@ uint16_t countVibrationsTriggered = 0;
 uint16_t saveCountofVibrationsTriggered = 0;
 
 //=========== signal generator ===========
-static uint16_t kNumberOfBins = 10;
+static uint16_t kNumberOfBins = 100;
 static constexpr short kSignalWaveform = static_cast<short>(Waveform::kArbitrary);
 static uint32_t kSignalDurationUs = 25 * 1000;  // in microseconds
 static float kSignalFrequencyHz = 40.f;
@@ -365,9 +364,6 @@ void ReplayPseudoForces() {
 }
 
 void SummaryStatPseudoForces() {
-  // Read the number of ones from the stored variable (only during condition 'a')
-  // Stitch a waveform for a duration of pulse_duration*number of ones
-  // Play that waveform continously
   unsigned long currentMillis = millis();
   unsigned long SummaryStatPF_duration = 1000 / kSignalFrequencyHz * saveCountofVibrationsTriggered;
 
