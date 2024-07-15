@@ -383,12 +383,15 @@ void handleSerialInput(char serial_c) {
       switch (amplitude_char) {
         case '0':
           signal.amplitude(receivedInts[0]);
+          StopPulse();
           break;
         case '1':
           signal.amplitude(receivedInts[1]);
+          StopPulse();
           break;
         case '2':
           signal.amplitude(receivedInts[2]);
+          StopPulse();
           break;
         default:
           Serial.println("Invalid Amplitude Command");
