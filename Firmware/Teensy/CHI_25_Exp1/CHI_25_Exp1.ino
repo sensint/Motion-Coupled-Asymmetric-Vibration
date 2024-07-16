@@ -33,6 +33,7 @@ enum class Waveform : short {
 };
 
 char selectedMode = '\0';
+char amplitude_char;
 bool modeRunning = false;
 
 //=========== Laser Sensing ===========
@@ -54,7 +55,6 @@ const int maxDataPoints = 30000;
 struct DataPoint {
   unsigned long timestamp;
   unsigned long distance;
-  // int condition;
   bool VibrationStatus;
 };
 
@@ -491,7 +491,7 @@ void MappingFunction() {
 void handleSerialInput(char serial_c) {
   if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
     if (Serial.available()) {
-      char amplitude_char = Serial.read();
+      amplitude_char = Serial.read();
       switch (amplitude_char) {
         case '0':
           signal.amplitude(receivedInts[0]);
@@ -529,11 +529,13 @@ void handleSerialInput(char serial_c) {
   }
 }
 
-void printDataArray(char mode) {
+void printDataArray(char mode, char amplitudeLevel) {
   // Serial.println("Data array contents:");
   for (unsigned int i = 0; i < dataSize; i++) {
     Serial.print("Condition: ");
     Serial.print(mode);
+    Serial.print(", AmpLevel: ");
+    Serial.print(amplitudeLevel);
     Serial.print(", Index: ");
     Serial.print(i);
     Serial.print(", Time: ");
@@ -639,7 +641,7 @@ void loop() {
       currentIndexReplay = 0;
       dataIndex = 0;
       if (selectedMode == 'a' || selectedMode == 'b' || selectedMode == 'c' || selectedMode == 'd') {
-        printDataArray(selectedMode);
+        printDataArray(selectedMode, amplitude_char);
       }
       if (selectedMode == 'c' || selectedMode == 'd') {
         memset(data, 0, sizeof(data));
