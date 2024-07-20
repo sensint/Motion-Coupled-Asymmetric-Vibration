@@ -418,7 +418,7 @@ void ReplayPseudoForcesLocal() {
 
 void SummaryStatPseudoForces() {
   unsigned long currentMillis = millis();
-  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggered * kSignalDurationUs;
+  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggered * kSignalDurationUs * pow(10, -4); // -4 to make it 1/10th the actual
 
   switch (stepPseudoForces) {
     case 0:  // Start positive vibration
@@ -624,15 +624,12 @@ void loop() {
         case 'c':
           data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
           dataIndex++;
-          // Serial.println(saveCountofVibrationsTriggered);
-          // SummaryStatPseudoForces();
-          GeneratePseudoForces();
+          SummaryStatPseudoForces();
           break;
         case 'd':
           data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
           dataIndex++;
-          // SummaryStatPseudoForces();
-          GeneratePseudoForces();
+          SummaryStatPseudoForces();
           break;
 
         // Non Experiment Conditions //
@@ -649,7 +646,6 @@ void loop() {
     } else {
       modeRunning = false;
       StopPulse();
-      // Serial.println("Time is up!");
       saveCountofVibrationsTriggered = countVibrationsTriggered;
       countVibrationsTriggered = 0;
       currentIndexReplay = 0;
