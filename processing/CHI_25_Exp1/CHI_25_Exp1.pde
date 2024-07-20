@@ -1,237 +1,298 @@
-import processing.serial.*;  // Import the serial library
-import java.io.*;  // Import for handling files
+import controlP5.*;
+import processing.serial.*;
+import g4p_controls.*;
+import processing.data.Table;
+import processing.data.TableRow;
 
-// GLOBAL VARIABLES
-boolean firstScreen = true; // show first screen for participant identification
-boolean secondScreen = false; // show second screen with experiment
-boolean thirdScreen = false; // show third screen break time
-int iteration = 0; // sequence length, number of experiments (2) for one participant
-int iterationTotal =0; //sequence length fix
-char amplitude = '1';
-int trial = 0;
-int staticCountdown = 3;  // Countdown start value (in seconds)
-String[] conditions;
-String[] amplitudes;
+Table dataTable; // Table to store data entries
 
+GTextField participantIdTextfield;
+GTextField sequenceTextfield;
 
-//SCREEN 1 VARABLES  
-String participantID = "";  // Variable to store the participant ID
-String sequence = "";  // Variable to store the sequence
-String[] sequenceSmall; // array, store the sequence for each trial
-boolean typingID = true;  // Flag to indicate if typing is enabled for participant ID
-boolean typingSeq = false;  // Flag to indicate if typing is enabled for sequence
+Serial serial; // Serial object for communication with Arduino
+String[] serialPorts; // Array to store available serial ports
+ControlP5 cp5;
+Button validateButton;
+Button nextButton;
+Button replayButton;
+Button nextConditionButton;
 
-//SCREEN 2 VARABLES
-Serial myPort;  // The serial port object
-int countdown = staticCountdown;  // Countdown start value (in seconds)
-int lastMillis;  // To track time for the countdown
-int startTime;  // To store the time when the countdown starts
-Table table;  // Table object to store data
-String distance =""; //get distance value
-boolean wait =false;//prevent skip the countdown
-int counter = 0;// force saving only one time
-int i =0; // sequence indice (which condition is running
-String displayText = "Go to next Condition";
-
+int countdownTime = 15; // Countdown time in seconds
+int startTime;
+boolean timerFinished = false;
+int currentScreen = 1; // 1: Screen 1, 2: Screen 2, 3: Screen 3
+String participantId;
+String sequence;
+String[] conditions_amplitudes;
+char[]conditions;
+char[] amplitudes;
+int trials =0;
+boolean incremented=false;
+int currentConditionIndex = 0;
+int totalconditions =0;
+String text_Screen3 ="";
+String dataString="";
 
 void setup() {
-  size(700, 600);
-  textSize(32);
-  surface.setLocation(600, 200);
-  fill(0);
+  size(800, 600); // Window size
   
+  //INITIALIZE SERIAL COMUNICATION
+    // Get a list of available serial ports
+  serialPorts = Serial.list();
   
-  // SERIAL PORT DEFINITION
-  
-   // List all the available serial ports
-  printArray(Serial.list());
-  
-  // Change the number to match your port index (e.g., Serial.list()[0], Serial.list()[1], etc.)
-  String portName = Serial.list()[0];  
-  if (portName == null) {
-    println("Error: No serial ports available.");
-    exit();  // Exit the program if no ports are available
+  if (serialPorts.length == 0) {
+    println("No serial ports found.");
   }
-
-  try {
-    myPort = new Serial(this, portName, 115200);  // Initialize the serial port
-  } catch (Exception e) {
-    println("Error: Could not initialize serial port " + portName);
-    e.printStackTrace();
-    exit();  // Exit the program if the port can't be initialized
+  else {
+    println("Available serial ports:");
+    for (int i = 0; i < serialPorts.length; i++) {
+      println(i + ": " + serialPorts[i]);
+    }
+    
+    // Select the first serial port in the list (modify as needed)
+    String portName = serialPorts[0];
+    
+    // Initialize serial communication
+    serial = new Serial(this, portName, 9600); // Adjust baud rate as per your setup
   }
   
+  //INITIALIZE DATA STORAGE
+   // Create a new table
+  dataTable = new Table();
   
-  //TIMER INITIALISATION
+  // Add columns to the table
+  dataTable.addColumn("Condition");
+  dataTable.addColumn("AmpLevel");
+  dataTable.addColumn("Index");
+  dataTable.addColumn("Time");
+  dataTable.addColumn("Distance");
+  dataTable.addColumn("Vibration");
   
-  lastMillis = millis();  // Initialize lastMillis with the current time
-  startTime = millis();  // Store the start time of the countdown
+  //INITIALIZE VISUAL COMPONENTS
+  cp5 = new ControlP5(this);
 
+  // Screen 1: Input fields and Validate button
 
-  // SAVING VARIABLE INITIALISATION
-  
-  table = new Table();
-  table.addColumn("Time");
-  table.addColumn("Sensor Reading");
-  table.addColumn("Vibration");
+  // Initialize G4P textfields
+  participantIdTextfield = new GTextField(this, 300, 210, 300, 40);
+  participantIdTextfield.setFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 24));
+
+  sequenceTextfield = new GTextField(this, 300, 280, 300, 40);
+  sequenceTextfield.setFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 24));
+
+  validateButton = cp5.addButton("validate")
+    .setPosition(350, 380)
+    .setSize(120, 50)
+    .setFont(createFont("arial", 24))
+    .setLabel("Validate")
+    .onClick(new CallbackListener() {
+      public void controlEvent(CallbackEvent event) {
+        validateInputs();
+      }
+    });
+
+  // Screen 2: Next and Replay buttons
+  nextButton = cp5.addButton("next")
+    .setPosition(250, 400)
+    .setSize(100, 50)
+    .setFont(createFont("arial", 24))
+    .setLabel("Next")
+    .setVisible(false)
+    .onClick(new CallbackListener() {
+      public void controlEvent(CallbackEvent event) {
+        switchToNextScreen();
+      }
+    });
+
+  replayButton = cp5.addButton("replay")
+    .setPosition(450, 400)
+    .setSize(100, 50)
+    .setFont(createFont("arial", 24))
+    .setLabel("Replay")
+    .setVisible(false)
+    .onClick(new CallbackListener() {
+      public void controlEvent(CallbackEvent event) {
+        restartSequence();
+      }
+    });
+
+  // Screen 3: Next Condition button
+  nextConditionButton = cp5.addButton("nextCondition")
+    .setPosition(300, 400)
+    .setSize(200, 50)
+    .setFont(createFont("arial", 18))
+    .setLabel("Next Condition")
+    .setVisible(false)
+    .onClick(new CallbackListener() {
+      public void controlEvent(CallbackEvent event) {
+        switchToNextCondition();
+      }
+    });
 }
 
 void draw() {
+  background(240);
   
-  //============================================ setup the experiment (Id + sequence)====================================================
-  
-  if(firstScreen){
-    background(255);  // White background
-    textSize(32);
-    surface.setLocation(600, 200);
+  if (serial.available() > 0) {
+    // Read the incoming data from the serial port
+    dataString = serial.readStringUntil('\n');
     
-    // Participant ID Field
-    fill(0);
-    text("Participant ID:", width / 2 - 90, height / 2 - 120);
-    if (typingID) {
-      fill(200);  // Light gray for selected field
-    } else {
-      fill(255);  // White for non-selected field
+    if(dataString!= null)
+    {
+      // Print the received data to the console
+      //println("Received data: " + dataString);
+      dataString = trim(dataString);
+      // Remove commas from the data string
+      dataString = dataString.replace(",", "");
+    
+      // Split the string by spaces and colons
+      String[] parts = split(dataString," ");
+    
+      if(parts.length == 12)
+      {
+        // Extract values from the split parts
+        String condition = parts[1];
+        int ampLevel = Integer.parseInt(parts[3]);
+        int index = Integer.parseInt(parts[5]);
+        int time = Integer.parseInt(parts[7]);
+        int distance = Integer.parseInt(parts[9]);
+        int vibration = Integer.parseInt(parts[11]);
+      
+        // Add a new row to the table
+        TableRow newRow = dataTable.addRow();
+        newRow.setString("Condition", condition);
+        newRow.setInt("AmpLevel", ampLevel);
+        newRow.setInt("Index", index);
+        newRow.setInt("Time", time);
+        newRow.setInt("Distance", distance);
+        newRow.setInt("Vibration", vibration);
+        }
+        
+         // Print the stored data for verification
+      //for (TableRow row : dataTable.rows()) {
+      //  println("Condition: " + row.getString("Condition") + ", AmpLevel: " + row.getInt("AmpLevel") + ", Index: " + row.getInt("Index") + ", Time: " + row.getInt("Time") + ", Distance: " + row.getInt("Distance") + ", Vibration: " + row.getInt("Vibration"));
+      //}
     }
-    rect(width / 2 - 190, height / 2 - 100, 380, 40);  // Text input box for participant ID
-    
-    // Sequence Field
-    fill(0);
-    text("Sequence:", width / 2 - 80, height / 2);
-    if (typingSeq ) {
-      fill(200);  // Light gray for selected field
-    } else {
-      fill(255);  // White for non-selected field
-    }
-    rect(width / 2 - 190, height / 2 + 20, 380, 40);  // Text input box for sequence
-    
-    // Display the typed text
-    fill(0);
-    text(participantID, width / 2 - 180, height / 2 - 70);  // Display the typed participant ID
-    text(sequence, width / 2 - 180, height / 2 + 50);  // Display the typed sequence
-    
-    // Validate Button
-    fill(0, 200, 200);
-    rect(width / 2 - 50, height / 2 + 80, 100, 40);  // Validate button
-    fill(0);
-    textSize(20);
-    text("Validate", width / 2 -40, height / 2 + 108);
-    textSize(32);
   }
-  
-  //====================================================== experiment screen (count down , info and saved file) ===============================================================
-  else if (secondScreen)
-  {
-    background(255);  // White background
-    textSize(100);
-    textAlign(CENTER, CENTER);
-    surface.setLocation(600, 200);
+
+  if (currentScreen == 1) {
+    // Screen 1: Input fields and Validate button
     fill(0);
-    if(counter==0){
-    textSize(20);
-    text(nameSave(participantID, sequenceSmall[trial].charAt(i), amplitude,trial),20+textWidth(nameSave(participantID, sequenceSmall[trial].charAt(i), amplitude,trial))/2,40 );
+    textSize(24);
+    textAlign(LEFT, CENTER);
+    text("Participant ID:", 100, 230);
+    text("Sequence:", 150, 300);
+  } else if (currentScreen == 2) {
+    // Screen 2: Countdown timer
+    fill(0);
+    textSize(96);
+    textAlign(CENTER, CENTER);
+
+    if (!timerFinished) {
+      int elapsedTime = (millis() - startTime) / 1000;
+      int remainingTime = countdownTime - elapsedTime;
+      if (remainingTime > 0) {
+        text(remainingTime, width / 2, height / 2);
+      } else {
+        timerFinished = true;
+        textSize(50);
+        text("Time's up!", width / 2, height / 2);
+        nextButton.show();
+        replayButton.show();
+        SaveOrganiseCSV( dataTable, participantId, trials, conditions[currentConditionIndex], amplitudes[currentConditionIndex]);
+      }
+    } else {
+      textSize(50);
+      text("Time's up!", width / 2, height / 2);
     }
+  } else if (currentScreen == 3) {
+    // Screen 3: "Take a break" and "Next Condition" button
+    fill(0);
+    textSize(48);
+    textAlign(CENTER, CENTER);
     
-    
-      // Read data from the serial port
-    if (myPort.available() > 0) {
-      String inString = myPort.readStringUntil('\n');  // Read a string from the serial port until a newline character
-      if (inString != null) {
-        inString = trim(inString);  // Remove any whitespace characters (including the newline)
-        String [] result= split(inString," ");
-        //println("inString= "+inString);
-        if (int(result[9])< 100)
-        {
-          distance=result[10];
-          //println("Received from Arduino: " + result[10]);  // Print the received data
-        }
-        else
-        {
-          distance=result[9];
-         // println("Received from Arduino: " + result[9]);  // Print the received data
-        }
-        
-        
-        // Write the data to the table
-        float elapsedTime = (millis() - startTime) / 1000.0;  // Calculate the elapsed time in seconds with decimals
-        if( elapsedTime<=30)
-        {
-          TableRow newRow = table.addRow();
-          newRow.setFloat("Time", elapsedTime);
-          newRow.setString("Sensor Reading", distance);
-          newRow.setString("Vibration", "false");
-        }
+    // adapt texte on screen 3 and update trial number
+    //println((((trials+1)*(conditions.length/conditions_amplitudes.length))-1)+"  "+currentConditionIndex+"  "+trials);
+    if((((trials+1)*(conditions.length/conditions_amplitudes.length))-1)== currentConditionIndex)
+    {
+      text_Screen3= "Take a break";
+      if (incremented == false)
+      {
+        trials++;
+        incremented =true;
       }
     }
-  
-    // Display the countdown
-    fill(0);
+    else
+    {
+      text_Screen3= "Go to Next Condition";
+    }
+    text(text_Screen3, width / 2, height / 2 - 50);
+  }
+}
 
-    if(countdown >=0){
-      textSize(100);
-      text(countdown, width / 2, height / 2);
+void validateInputs() {
+  participantId = participantIdTextfield.getText();
+  sequence = sequenceTextfield.getText();
+
+  println("Participant ID: " + participantId);
+  println("Sequence: " + sequence);
+
+  // Split sequence into conditions
+  conditions_amplitudes = sequence.split("_");
+  currentConditionIndex = 0;
+  
+  //intialisation of conditions and amplitudes tab
+  for (int i=0; i<conditions_amplitudes.length; i++)
+  {
+    for (int j=0; j<conditions_amplitudes[i].length();j++)
+    {
+      totalconditions++;
     }
-    else{
-      textSize(100);
-      text(0, width / 2, height / 2);
+  }
+  conditions=new char[totalconditions/2];
+  amplitudes=new char[totalconditions/2];
+  
+  // fill conditions and amplitudes tab
+  int comp =0;
+   for (int i=0; i<conditions_amplitudes.length; i++)
+  {
+    for (int j=0; j<conditions_amplitudes[i].length();j=j+2)
+    {
+    conditions[comp]= conditions_amplitudes[i].charAt(j);
+    amplitudes[comp]=conditions_amplitudes[i].charAt(j+1);
+    comp++;
     }
+  }
+  //print verification of parsing
+  //for(int i=0;i<conditions.length;i++){
+  //  println("conditions "+conditions[i]+" ; amplitudes "+amplitudes[i]);
+  //}
+
+  // Validation logic here
+  if (participantId.isEmpty() || sequence.isEmpty()) {
+    println("Both fields are required.");
+  } else if (conditions_amplitudes.length == 0) {
+    println("Invalid sequence format.");
+  } else {
+    println("Validation successful.");
     
-  
-    // Check if one second has passed
-    if (millis() - lastMillis >= 1000) {
-      countdown--;  // Decrease the countdown
-      lastMillis = millis();  // Reset lastMillis to the current time
+     if (serial != null) {
+      // Send "a1" over serial
+      String sent = conditions[currentConditionIndex]+""+amplitudes[currentConditionIndex];
+      serial.write(sent);
+      println("Sent: "+sent);
     }
-  
-    // When countdown reaches zero, stop updating
-    if (countdown <= 0 ) {
-      wait = true;
-      fill(255, 0, 0);
-      textSize(50);
-      text("Time's up!", width / 2, height / 2 + 100);
-      
-      fill(0, 200, 200);
-      rect(width / 2 - 50, height / 2 + 200, 100, 40);  // Ready button
-      fill(0);
-      textSize(20);
-      text("Next", width / 2 - textWidth("go to 3")/2 +30, height / 2 + 220);
-      textSize(32);
-    }
-    if (countdown <=0 && counter ==0){
-        //create folder idparticipant+sequence 
-        
-        // Save the table to a CSV file
-        //saveTable(table, nameSave(participantID, sequence.charAt(i), amplitude,trial));
-        //println("Recording complete. "+nameSave(participantID, sequence.charAt(i), amplitude,trial));
-        SaveOrganiseCSV(table,participantID,trial,sequenceSmall[trial].charAt(i),amplitude);
-        i++;
-        counter ++;
-        
-    }
-  }   
-    // =================================================================== take a break screen =================================================================================
-    else if (thirdScreen) {
-      // Draw the "Take a Break" screen
-      background(255);
-      fill(0);
-      textSize(40);
-      text(displayText, width / 2 , height / 2 - 60);
-      
-      // Ready Button
-      fill(0, 200, 200);
-      rect(width / 2 - 50, height / 2 - 20, 100, 40);  // Ready button
-      fill(0);
-      textSize(20);
-      text("Ready!", width / 2 - 10, height / 2 );
-      textSize(32);
-    }
+    currentScreen = 2; // Move to screen 2
+    startTime = millis(); // Start the countdown timer
+    validateButton.hide();
+    participantIdTextfield.setVisible(false);
+    sequenceTextfield.setVisible(false);
+    nextButton.hide();
+    replayButton.hide();
+    nextConditionButton.hide();
+  }
 }
 
-String nameSave(String ID, char condition, char amplitude, int trial)
-{
-    String result = ID+"_"+condition+str(amplitude)+"_Trial "+str(trial)+".csv";
-    return result;
-}
 void SaveOrganiseCSV(Table table, String participantID, int trialNumber, char condition, char amplitude) {
   // Create participant directory
   File participantDir = new File(dataPath(participantID));
@@ -250,164 +311,72 @@ void SaveOrganiseCSV(Table table, String participantID, int trialNumber, char co
   saveTable(table, filePath);
 }
 
-void splitConditionsAndAmplitudes(String input) {
-  String[] segments = split(input, '_');
-  conditions = new String[segments.length];
-  amplitudes = new String[segments.length];
-  
-  for (int i = 0; i < segments.length; i++) {
-    String segment = segments[i];
-    StringBuilder cond = new StringBuilder();
-    StringBuilder amp = new StringBuilder();
-    
-    for (int j = 0; j < segment.length(); j++) {
-      char c = segment.charAt(j);
-      if (Character.isLetter(c)) {
-        cond.append(c);
-      } else if (Character.isDigit(c)) {
-        amp.append(c);
-      }
+void switchToNextScreen() {
+  currentScreen = 3; // Move to screen 3
+  nextButton.hide();
+  replayButton.hide();
+  nextConditionButton.show();
+}
+
+void switchToNextCondition() {
+  if (currentConditionIndex < conditions.length-1 ) 
+  {
+    currentConditionIndex++;
+    incremented = false;
+     //send on serial
+    if (serial != null) 
+    {
+        // Send "a1" over serial
+        String sent = conditions[currentConditionIndex]+""+amplitudes[currentConditionIndex];
+        serial.write(sent);
+        println("Sent: "+sent);
     }
-    conditions[i] = cond.toString();
-    amplitudes[i] = amp.toString();
+    currentScreen = 2; // Move to screen 2
+    startTime = millis(); // Start the countdown timer
+    validateButton.hide();
+    participantIdTextfield.setVisible(false);
+    sequenceTextfield.setVisible(false);
+    nextButton.hide();
+    replayButton.hide();
+    nextConditionButton.hide();
+    timerFinished = false;
+  } 
+  else {
+      switchToScreen1(); // If all conditions are played, switch back to screen 1
   }
 }
 
+void switchToScreen1() {
+  currentScreen = 1; // Move to screen 1
+  participantIdTextfield.setText("");
+  participantIdTextfield.setVisible(true);
+  sequenceTextfield.setText("");
+  sequenceTextfield.setVisible(true);
+  validateButton.show();
+  nextButton.hide();
+  replayButton.hide();
+  nextConditionButton.hide();
+  timerFinished = false;
+  trials=0;
+  currentConditionIndex=0;
+  incremented=false;
+  totalconditions =0;
+  text_Screen3 ="";
+  dataString="";
 
-void keyPressed() {
-
-    if (typingID) {
-      if (keyCode == BACKSPACE && participantID.length() > 0) {
-        participantID = participantID.substring(0, participantID.length() - 1);
-      }  else if(keyCode == ENTER){ // change field active when enter pressed
-        typingID = false;
-        typingSeq =true;
-      }else if (keyCode != BACKSPACE && keyCode != DELETE  && keyCode != RETURN) {
-        participantID += key;
-      }
-    } else if (typingSeq) {
-      if (keyCode == BACKSPACE && sequence.length() > 0) {
-        sequence = sequence.substring(0, sequence.length() - 1);
-      } 
-      else if(keyCode == ENTER){ // change field active when enter pressed (validate ?)
-        typingID = false;
-        typingSeq = false;
-        splitConditionsAndAmplitudes(sequence);
-        sequenceSmall= conditions;
-        for(int j=0;j<sequenceSmall.length;j++)
-        {
-          iteration += sequenceSmall[j].length();
-        }
-        iterationTotal = iteration;
-        println("interaction TOT : "+ iterationTotal);
-        
-        
-        //write on serial port
-        amplitude =amplitudes[trial].charAt(i);
-        myPort.write(sequenceSmall[trial].charAt(i)+str(amplitude));
-        println(sequenceSmall[trial].charAt(i)+str(amplitude));
-        secondScreen = true;
-        firstScreen = false;
-      }
-      else if (keyCode != BACKSPACE && keyCode != DELETE && keyCode != RETURN) {
-        sequence += key;
-      }
-    }
 }
 
-void mousePressed() {
-  if(firstScreen){
-      // function to pass first to second screen and determine active field
-      if (mouseX > width / 2 - 190 && mouseX < width / 2 + 190 && mouseY > height / 2 - 100 && mouseY < height / 2 - 60) {
-        typingID = true;
-        typingSeq = false;
-      } else if (mouseX > width / 2 - 190 && mouseX < width / 2 + 190 && mouseY > height / 2 + 20 && mouseY < height / 2 + 60) {
-        typingID = false;
-        typingSeq = true;
-      } 
+void restartSequence() {
+  currentScreen = 2; // Move to screen 2
+   //send on serial
+    if (serial != null) {
+      // Send "a1" over serial
+      String sent = conditions[currentConditionIndex]+""+amplitudes[currentConditionIndex];
+      serial.write(sent);
+      println("restarted: "+sent);
     }
-    if (mouseX > width / 2 - 50 && mouseX < width / 2 + 50 && mouseY > height / 2 + 80 && mouseY < height / 2 + 120 && sequence!="") {
-      splitConditionsAndAmplitudes(sequence);  
-      sequenceSmall= conditions;
-        for(int j=0;j<sequenceSmall.length;j++)
-        {
-          iteration += sequenceSmall[j].length();
-        }
-        iterationTotal=iteration;
-        println("interaction TOT : "+ iterationTotal);
-        
-        
-        //write on serial port
-        amplitude =amplitudes[trial].charAt(i);
-        myPort.write(sequenceSmall[trial].charAt(i)+str(amplitude));
-        println(sequenceSmall[trial].charAt(i)+str(amplitude));
-        secondScreen = true;
-        firstScreen = false;
-    }
-  
-  else if(secondScreen){ // fuction to pass second to third screen
-  //width / 2 - 50, height / 2 + 200, 100, 40
-    if (mouseX > width / 2 - 50 && mouseX < width / 2 + 50 && mouseY > height / 2 + 200 && mouseY < height / 2 + 240 && wait==true) {
-        thirdScreen = true;
-        secondScreen = false;
-        wait=false;
-        
-    }
-  }
-  else if (thirdScreen) { 
-    // Check if the "Ready" button is clicked
-    if (mouseX > width / 2 - 50 && mouseX < width / 2 + 50 && mouseY > height / 2 - 20 && mouseY < height / 2 + 20) {
-      // experiment with the same participant (go to screen 2)
-      iteration --;
-      //println(str((iterationTotal-iteration)/sequenceSmall.length)+"  "+str(trial+1));
-      if((iterationTotal-iteration)/sequenceSmall[trial].length() >= trial+1)                                                          
-      {
-        trial ++;
-        i=0;
-        displayText="Take a break !";
-      }
-      else{
-        displayText = "Go to next Condition";
-      }
-      if(iteration >0){
-        //write on serial port
-        amplitude =amplitudes[trial].charAt(i);
-        myPort.write(sequenceSmall[trial].charAt(i)+str(amplitude));
-        println(sequenceSmall[trial].charAt(i)+str(amplitude));
-        secondScreen = true;
-        thirdScreen = false;
-        counter =0;
-        countdown = staticCountdown;
-        
-        
-        //Clean second screen and initialise varables
-        background(255);  // White background
-        textSize(100);
-        textAlign(CENTER, CENTER);
-        surface.setLocation(600, 200);
-        fill(0);
-        
-        //TIMER INITIALISATION
-        lastMillis = millis();  // Initialize lastMillis with the current time
-        startTime = millis();  // Store the start time of the countdown
-      
-        // SAVING VARIABLE INITIALISATION
-        table = new Table();
-        table.addColumn("Time");
-        table.addColumn("Sensor Reading");
-        table.addColumn("Vibration");
-      }
-      else {
-        // here restart for new participant (go to screen 1)
-        firstScreen = true;
-        thirdScreen = false;
-        participantID = "";  
-        sequence = "";  
-        typingID = true;  
-        typingSeq = false;
-        i =0;
-        
-      }
-    }
-  }
+  startTime = millis(); // Restart the countdown timer
+  timerFinished = false;
+  nextButton.hide();
+  replayButton.hide();
 }
