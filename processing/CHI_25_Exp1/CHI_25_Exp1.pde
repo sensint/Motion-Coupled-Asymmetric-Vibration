@@ -200,6 +200,7 @@ void draw() {
         nextButton.show();
         replayButton.show();
         SaveOrganiseCSV( dataTable, participantId, trials, conditions[currentConditionIndex], amplitudes[currentConditionIndex]);
+        dataTable.clearRows();
       }
     } else {
       textSize(50);
@@ -227,6 +228,10 @@ void draw() {
       text_Screen3= "Go to Next Condition";
     }
     text(text_Screen3, width / 2, height / 2 - 50);
+    if(conditions[currentConditionIndex]=='d'){
+      textSize(30);
+      text("do not move", width / 2, height / 2+50);
+    }
   }
 }
 

@@ -9,9 +9,7 @@
 #include <assert.h>
 
 // TO DO MAIN:
-// Change the max and min of sensor to what the sensor actually measure
 // Maybe having the positive and negative cycles of the vibration stored?
-// Maybe for condition c and d, we divide the total cycles/2 and then play for the positive and for the negative.
 
 #define VERSION "v1.1.0"
 
@@ -36,21 +34,31 @@ char amplitude_char;
 bool modeRunning = false;
 
 //=========== Laser Sensing ===========
-#define DEV_I2C Wire2
-VL53L4CD sensor_vl53l4cd_sat(&DEV_I2C, A1);
+#define DEV_I2C1 Wire1
+#define DEV_I2C2 Wire2
+VL53L4CD sensor_vl53l4cd_1(&DEV_I2C1, A0);
+VL53L4CD sensor_vl53l4cd_2(&DEV_I2C2, A1);
+
 int16_t x_lib_offset = 0;
 #define CalibLength 100
 #define XZero 85
+
+float filtered_sensor_value_1 = 0.f;
+float filtered_sensor_value_2 = 0.f;
+unsigned long measuredDistance_1;
+unsigned long measuredDistance_2;
 float filtered_sensor_value = 0.f;
 float last_triggered_sensor_val = 0.f;
 unsigned long measuredDistance;
 int sensorSamplingFrequency = 100;
 
 //=========== Laser Sensing Constants ===========
-static constexpr float kFilterWeight = 0.5;
+float kFilterWeight = 0.5;
+static constexpr float kFilterWeightNear = 8;
+static constexpr float kFilterWeightFar = 2;
 static constexpr uint32_t kSensorMinValue = 20;
-static constexpr uint32_t kSensorMaxValue = 620;
-static constexpr uint32_t kSensorJitterThreshold = 50;
+static constexpr uint32_t kSensorMaxValue = 600;
+static constexpr uint32_t kSensorJitterThreshold = 8;
 
 //============================= STORING ===========================
 const int maxDataPoints = 30000;
@@ -102,7 +110,6 @@ int16_t negDat[256];
 
 #define Amplitude_ARRAYSIZE 3  // Change if we decide on 3 levels of amplitude
 float receivedInts[Amplitude_ARRAYSIZE] = { 0.4, 0.7, 1.0 };
-// float receivedInts[Amplitude_ARRAYSIZE] = { 0.5, 1.0 };
 char report[64];
 char full_report[160];  // Define a buffer for the full report
 
@@ -132,15 +139,22 @@ void SetupSerial() {
   delay(500);
 }
 
-void InitializeSensor() {
-  DEV_I2C.begin();                     // Initialize I2C bus.
-  sensor_vl53l4cd_sat.begin();         // Configure VL53L4CD satellite component.
-  sensor_vl53l4cd_sat.VL53L4CD_Off();  // Switch off VL53L4CD satellite component.
-  sensor_vl53l4cd_sat.InitSensor();    //Initialize VL53L4CD satellite component.
-  sensor_vl53l4cd_sat.VL53L4CD_CalibrateOffset(XZero, &x_lib_offset, 100);
-  sensor_vl53l4cd_sat.VL53L4CD_GetOffset(&x_lib_offset);
-  sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(10, 0);  // Program the highest possible TimingBudget, without enabling the low power mode. This should give the best accuracy
-  sensor_vl53l4cd_sat.VL53L4CD_StartRanging();         // Start Measurements
+// void InitializeSensor() {
+//   sensor_vl53l4cd_sat.begin();         // Configure VL53L4CD satellite component.
+//   sensor_vl53l4cd_sat.VL53L4CD_Off();  // Switch off VL53L4CD satellite component.
+//   sensor_vl53l4cd_sat.InitSensor();    //Initialize VL53L4CD satellite component.
+//   // sensor_vl53l4cd_sat.VL53L4CD_CalibrateOffset(XZero, &x_lib_offset, 100);
+//   // sensor_vl53l4cd_sat.VL53L4CD_GetOffset(&x_lib_offset);
+//   sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(10, 0);  // Program the highest possible TimingBudget, without enabling the low power mode. This should give the best accuracy
+//   sensor_vl53l4cd_sat.VL53L4CD_StartRanging();         // Start Measurements
+// }
+
+void InitializeSensor(VL53L4CD &sensor) {
+  sensor.begin();                         // Configure VL53L4CD satellite component.
+  sensor.VL53L4CD_Off();                  // Switch off VL53L4CD satellite component.
+  sensor.InitSensor();                    // Initialize VL53L4CD satellite component.
+  sensor.VL53L4CD_SetRangeTiming(10, 0);  // Program the highest possible TimingBudget, without enabling the low power mode. This should give the best accuracy
+  sensor.VL53L4CD_StartRanging();         // Start Measurements
 }
 
 void SetupAudio() {
@@ -418,7 +432,7 @@ void ReplayPseudoForcesLocal() {
 
 void SummaryStatPseudoForces() {
   unsigned long currentMillis = millis();
-  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggered * kSignalDurationUs * pow(10, -4); // -4 to make it 1/10th the actual
+  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggered * kSignalDurationUs * pow(10, -3);  // -4 to make it 1/10th the actual
 
   switch (stepPseudoForces) {
     case 0:  // Start positive vibration
@@ -481,8 +495,9 @@ void SummaryStatPseudoForces() {
   }
 }
 
-void MappingFunction(uint16_t measuredDistance) {
-  filtered_sensor_value = (1.f - kFilterWeight) * filtered_sensor_value + (kFilterWeight) * measuredDistance;
+void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
+  kFilterWeight = map(measuredDistance, kSensorMinValue, kSensorMaxValue, kFilterWeightNear, kFilterWeightFar) * 0.1;
+  filtered_sensor_value = (1.f - kFilterWeight) * filtered_sensor_value + (kFilterWeight)*measuredDistance;
   if (filtered_sensor_value >= kSensorMaxValue) {
     filtered_sensor_value = kSensorMaxValue;
   }
@@ -492,11 +507,6 @@ void MappingFunction(uint16_t measuredDistance) {
 
   mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
   // Serial.println(mapped_bin_id);
-
-  auto dist = abs((float)(filtered_sensor_value - last_triggered_sensor_val));
-  if (dist < kSensorJitterThreshold) {
-    return;
-  }
 }
 
 void handleSerialInput(char serial_c) {
@@ -561,7 +571,10 @@ void printDataArray(char mode, char amplitudeLevel) {
 
 void setup() {
   SetupSerial();
-  InitializeSensor();
+  DEV_I2C1.begin();  // Initialize I2C bus.
+  DEV_I2C2.begin();  // Initialize I2C bus.
+  InitializeSensor(sensor_vl53l4cd_1);
+  InitializeSensor(sensor_vl53l4cd_2);
   SetupAudio();
   for (int i = 0; i < 256; i++) {
     negDat[i] = -dat[i];
@@ -570,30 +583,43 @@ void setup() {
 }
 
 void loop() {
-  uint8_t NewDataReady = 0;
-  VL53L4CD_Result_t results;
-  uint8_t status;
+  uint8_t NewDataReady_1 = 0;
+  uint8_t NewDataReady_2 = 0;
+  VL53L4CD_Result_t results_1;
+  VL53L4CD_Result_t results_2;
+  uint8_t status_1;
+  uint8_t status_2;
 
   do {
-    status = sensor_vl53l4cd_sat.VL53L4CD_CheckForDataReady(&NewDataReady);
-  } while (!NewDataReady);
+    status_1 = sensor_vl53l4cd_1.VL53L4CD_CheckForDataReady(&NewDataReady_1);
+  } while (!NewDataReady_1);
 
-  if ((!status) && (NewDataReady != 0)) {
+  if ((!status_1) && (NewDataReady_1 != 0)) {
     // (Mandatory) Clear HW interrupt to restart measurements
-    sensor_vl53l4cd_sat.VL53L4CD_ClearInterrupt();
+    sensor_vl53l4cd_1.VL53L4CD_ClearInterrupt();
 
     // Read measured distance. RangeStatus = 0 means valid data
-    sensor_vl53l4cd_sat.VL53L4CD_GetResult(&results);
+    sensor_vl53l4cd_1.VL53L4CD_GetResult(&results_1);
+    measuredDistance_1 = results_1.distance_mm;  // make this fast
+    MappingFunction(measuredDistance_1, filtered_sensor_value_1);
   }
 
-  measuredDistance = results.distance_mm;  // make this fast
-  MappingFunction(measuredDistance);
-  // snprintf(report, sizeof(report), "Status = %3u, Distance = %5u mm, Signal = %6u kcps/spad",
-  //          results.range_status,
-  //          results.distance_mm,
-  //          results.signal_per_spad_kcps);
-  // snprintf(full_report, sizeof(full_report), "%s, Vibrating = %1u\r\n", report, is_vibrating);
-  // Serial.print(full_report);
+  do {
+    status_2 = sensor_vl53l4cd_2.VL53L4CD_CheckForDataReady(&NewDataReady_2);
+  } while (!NewDataReady_2);
+
+  if ((!status_2) && (NewDataReady_2 != 0)) {
+    // (Mandatory) Clear HW interrupt to restart measurements
+    sensor_vl53l4cd_2.VL53L4CD_ClearInterrupt();
+
+    // Read measured distance. RangeStatus = 0 means valid data
+    sensor_vl53l4cd_2.VL53L4CD_GetResult(&results_2);
+    measuredDistance_2 = results_2.distance_mm;  // make this fast
+    MappingFunction(measuredDistance_2, filtered_sensor_value_2);
+  }
+
+  filtered_sensor_value = (measuredDistance_1 + measuredDistance_2)/2;
+  // Serial.println(filtered_sensor_value);
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
@@ -605,6 +631,13 @@ void loop() {
     handleSerialInput(serial_c);
   }
 
+  // This is important here so that the serial is received without movement as well.
+  // auto dist = abs((float)(filtered_sensor_value - last_triggered_sensor_val));
+  // if (dist < kSensorJitterThreshold) {
+  //   return;
+  //   // filtered_sensor_value = last_triggered_sensor_val;
+  // }
+
   if (modeRunning) {
     if (millis() - startRecordingMillis < conditionPeriod) {
       switch (selectedMode) {
@@ -613,8 +646,6 @@ void loop() {
           data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
           dataIndex++;
           countVibrationsTriggered += is_vibrating;
-          // countVibrationsTriggered++;
-          // Serial.println(countVibrationsTriggered);
           break;
         case 'b':
           ReplayPseudoForcesLocal();
