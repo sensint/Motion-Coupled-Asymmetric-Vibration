@@ -95,7 +95,7 @@ bool augmentation_enabled = false;
 bool recording_enabled = false;
 
 uint16_t countVibrationsTriggered = 0;
-uint16_t saveCountofVibrationsTriggered = 0;
+uint16_t saveCountofVibrationsTriggeredSummary = 0;
 
 //=========== signal generator ===========
 static uint16_t kNumberOfBins = 60;
@@ -115,8 +115,9 @@ char full_report[160];  // Define a buffer for the full report
 
 //=========== Continuous Vibration ===========
 const long kContinuousVibrationDuration = 2500;
-uint16_t kpseudoForceRepetition = 2;
-const long kNoVibrationDuration = 500;
+uint16_t kpseudoForceRepetition = 1;
+uint16_t kpseudoForceRepetitionTrial = 3;
+const long kNoVibrationDuration = 100;
 uint16_t kContinuousVibrationRepetition = 3;
 unsigned long previousMillis = 0;
 
@@ -138,16 +139,6 @@ void SetupSerial() {
   Serial.begin(kBaudRate);
   delay(500);
 }
-
-// void InitializeSensor() {
-//   sensor_vl53l4cd_sat.begin();         // Configure VL53L4CD satellite component.
-//   sensor_vl53l4cd_sat.VL53L4CD_Off();  // Switch off VL53L4CD satellite component.
-//   sensor_vl53l4cd_sat.InitSensor();    //Initialize VL53L4CD satellite component.
-//   // sensor_vl53l4cd_sat.VL53L4CD_CalibrateOffset(XZero, &x_lib_offset, 100);
-//   // sensor_vl53l4cd_sat.VL53L4CD_GetOffset(&x_lib_offset);
-//   sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(10, 0);  // Program the highest possible TimingBudget, without enabling the low power mode. This should give the best accuracy
-//   sensor_vl53l4cd_sat.VL53L4CD_StartRanging();         // Start Measurements
-// }
 
 void InitializeSensor(VL53L4CD &sensor) {
   sensor.begin();                         // Configure VL53L4CD satellite component.
@@ -172,6 +163,7 @@ void StartPulsePosPF() {
   signal.amplitude(kSignalAsymAmp);
   pulse_time_us = 0;
   is_vibrating = true;
+  // countVibrationsTriggered++;
   // Serial.printf("Start Pos pulse \n\t bins: %d", mapped_bin_id);
   // Serial.println(F("=====================================================\n\n"));
 }
@@ -184,6 +176,7 @@ void StartPulseNegPF() {
   signal.amplitude(kSignalAsymAmp);
   pulse_time_us = 0;
   is_vibrating = true;
+  // countVibrationsTriggered++;
   // Serial.printf("Start Neg pulse \n\t bins: %d", mapped_bin_id);
   // Serial.println(F("=====================================================\n\n"));
 }
@@ -210,7 +203,7 @@ void GeneratePseudoForces() {
 
   switch (stepPseudoForces) {
     case 0:  // Start positive vibration
-      if (repetitionCountPseudoForces < kpseudoForceRepetition) {
+      if (repetitionCountPseudoForces < kpseudoForceRepetitionTrial) {
         signal.begin(kSignalWaveform);
         signal.arbitraryWaveform(dat, 170);
         signal.frequency(kSignalFrequencyHz);
@@ -263,8 +256,8 @@ void GeneratePseudoForces() {
       break;
 
     default:  // All repetitions complete
-      if (repetitionCountPseudoForces >= kpseudoForceRepetition) {
-        Serial.println("Pseudo Forces: All repetitions complete");
+      if (repetitionCountPseudoForces >= kpseudoForceRepetitionTrial) {
+        // Serial.println("Pseudo Forces: All repetitions complete");
       }
       break;
   }
@@ -304,18 +297,16 @@ void GenerateMotionCoupledPseudoForces() {
     // Uncomment below to stop the current vibration and play the next one.
     // if (is_vibrating) {  // This loop is for the case when we want to stop the ongoing vibration and start the next one.
     //   StopPulse();
-    //   delayMicroseconds(10);
+    //   delayMicroseconds(1);
     // }
 
     StartPulsePosPF();
     last_bin_id = mapped_bin_id;
     last_triggered_sensor_val = filtered_sensor_value;
-  }
-
-  if (mapped_bin_id > last_bin_id) {
+  } else if (mapped_bin_id > last_bin_id) {
     // if (is_vibrating) {  // This loop is for the case when we want to stop the ongoing vibration and start the next one.
     //   StopPulse();
-    //   delayMicroseconds(10);
+    //   delayMicroseconds(1);
     // }
 
     StartPulseNegPF();
@@ -432,7 +423,10 @@ void ReplayPseudoForcesLocal() {
 
 void SummaryStatPseudoForces() {
   unsigned long currentMillis = millis();
-  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggered * kSignalDurationUs * pow(10, -3);  // -4 to make it 1/10th the actual
+  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggeredSummary * kSignalDurationUs * pow(10, -3);
+  if (SummaryStatPF_duration > conditionPeriod) {
+    SummaryStatPF_duration = conditionPeriod;
+  }
 
   switch (stepPseudoForces) {
     case 0:  // Start positive vibration
@@ -448,7 +442,7 @@ void SummaryStatPseudoForces() {
       break;
 
     case 1:  // End positive vibration
-      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration) {
+      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration / 2) {
         signal.frequency(0);
         signal.amplitude(0);
         previousPseudoForcesMillis = currentMillis;
@@ -471,7 +465,7 @@ void SummaryStatPseudoForces() {
       break;
 
     case 3:  // End negative vibration
-      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration) {
+      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration / 2) {
         signal.frequency(0);
         signal.amplitude(0);
         previousPseudoForcesMillis = currentMillis;
@@ -552,7 +546,6 @@ void handleSerialInput(char serial_c) {
 }
 
 void printDataArray(char mode, char amplitudeLevel) {
-  // Serial.println("Data array contents:");
   for (unsigned int i = 0; i < dataSize; i++) {
     Serial.print("Condition: ");
     Serial.print(mode);
@@ -600,8 +593,6 @@ void loop() {
 
     // Read measured distance. RangeStatus = 0 means valid data
     sensor_vl53l4cd_1.VL53L4CD_GetResult(&results_1);
-    measuredDistance_1 = results_1.distance_mm;  // make this fast
-    MappingFunction(measuredDistance_1, filtered_sensor_value_1);
   }
 
   do {
@@ -614,12 +605,14 @@ void loop() {
 
     // Read measured distance. RangeStatus = 0 means valid data
     sensor_vl53l4cd_2.VL53L4CD_GetResult(&results_2);
-    measuredDistance_2 = results_2.distance_mm;  // make this fast
-    MappingFunction(measuredDistance_2, filtered_sensor_value_2);
   }
 
-  filtered_sensor_value = (measuredDistance_1 + measuredDistance_2)/2;
-  // Serial.println(filtered_sensor_value);
+  measuredDistance_1 = results_1.distance_mm;  // make this fast
+  measuredDistance_2 = results_2.distance_mm;  // make this fast
+  MappingFunction(measuredDistance_1, filtered_sensor_value_1);
+  MappingFunction(measuredDistance_2, filtered_sensor_value_2);
+
+  filtered_sensor_value = (measuredDistance_1 + measuredDistance_2) / 2;
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
@@ -627,6 +620,7 @@ void loop() {
       startRecordingMillis = millis();
       selectedMode = serial_c;
       modeRunning = true;
+      // countVibrationsTriggered = 0;
     }
     handleSerialInput(serial_c);
   }
@@ -637,28 +631,36 @@ void loop() {
   //   return;
   //   // filtered_sensor_value = last_triggered_sensor_val;
   // }
+  // float dist = abs(filtered_sensor_value - last_triggered_sensor_val);
 
   if (modeRunning) {
     if (millis() - startRecordingMillis < conditionPeriod) {
       switch (selectedMode) {
         case 'a':
+          // if (dist < kSensorJitterThreshold) {
+          //   return;
+          // }
           GenerateMotionCoupledPseudoForces();
-          data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
+          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
-          countVibrationsTriggered += is_vibrating;
+          if (is_vibrating) { countVibrationsTriggered++; }
+          // Serial.println(filtered_sensor_value - last_triggered_sensor_val/ (millis() - (millis() - startRecordingMillis)));
+          // Serial.println(millis() - startRecordingMillis);
+          // delay(10);
+          // Serial.println(countVibrationsTriggered);
           break;
         case 'b':
           ReplayPseudoForcesLocal();
-          data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
+          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
           break;
         case 'c':
-          data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
+          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
           SummaryStatPseudoForces();
           break;
         case 'd':
-          data[dataIndex] = { millis() - startRecordingMillis, (unsigned long)filtered_sensor_value, is_vibrating };
+          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
           SummaryStatPseudoForces();
           break;
@@ -677,17 +679,16 @@ void loop() {
     } else {
       modeRunning = false;
       StopPulse();
-      saveCountofVibrationsTriggered = countVibrationsTriggered;
-      countVibrationsTriggered = 0;
       currentIndexReplay = 0;
       dataIndex = 0;
+      if (selectedMode == 'a') {
+        saveCountofVibrationsTriggeredSummary = countVibrationsTriggered;
+        countVibrationsTriggered = 0;
+      }
       if (selectedMode == 'a' || selectedMode == 'b' || selectedMode == 'c' || selectedMode == 'd') {
         printDataArray(selectedMode, amplitude_char);
       }
-      if (selectedMode == 'c' || selectedMode == 'd') {
-        memset(data, 0, sizeof(data));
-      }
     }
   }
-  last_triggered_sensor_val = filtered_sensor_value;
+  // last_triggered_sensor_val = filtered_sensor_value;
 }

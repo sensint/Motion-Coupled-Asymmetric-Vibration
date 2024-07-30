@@ -200,7 +200,7 @@ void draw() {
         nextButton.show();
         replayButton.show();
         SaveOrganiseCSV( dataTable, participantId, trials, conditions[currentConditionIndex], amplitudes[currentConditionIndex]);
-        dataTable.clearRows();
+        //dataTable.clearRows();
       }
     } else {
       textSize(50);
