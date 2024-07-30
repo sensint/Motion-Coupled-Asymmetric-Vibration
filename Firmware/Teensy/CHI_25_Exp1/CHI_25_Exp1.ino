@@ -33,6 +33,13 @@ char selectedMode = '\0';
 char amplitude_char;
 bool modeRunning = false;
 
+//============ Velocity to Amplitude Mapping ============
+unsigned long lastTimeVel = 0;
+unsigned long currentTimeVel;
+float lastDistance = 0;
+float currentDistance = 0;
+float currentVelocity = 0;
+
 //=========== Laser Sensing ===========
 #define DEV_I2C1 Wire1
 #define DEV_I2C2 Wire2
@@ -58,7 +65,7 @@ static constexpr float kFilterWeightNear = 8;
 static constexpr float kFilterWeightFar = 2;
 static constexpr uint32_t kSensorMinValue = 20;
 static constexpr uint32_t kSensorMaxValue = 600;
-static constexpr uint32_t kSensorJitterThreshold = 8;
+static constexpr uint32_t kSensorJitterThreshold = 5;
 
 //============================= STORING ===========================
 const int maxDataPoints = 30000;
@@ -163,7 +170,6 @@ void StartPulsePosPF() {
   signal.amplitude(kSignalAsymAmp);
   pulse_time_us = 0;
   is_vibrating = true;
-  // countVibrationsTriggered++;
   // Serial.printf("Start Pos pulse \n\t bins: %d", mapped_bin_id);
   // Serial.println(F("=====================================================\n\n"));
 }
@@ -176,7 +182,6 @@ void StartPulseNegPF() {
   signal.amplitude(kSignalAsymAmp);
   pulse_time_us = 0;
   is_vibrating = true;
-  // countVibrationsTriggered++;
   // Serial.printf("Start Neg pulse \n\t bins: %d", mapped_bin_id);
   // Serial.println(F("=====================================================\n\n"));
 }
@@ -607,6 +612,7 @@ void loop() {
     sensor_vl53l4cd_2.VL53L4CD_GetResult(&results_2);
   }
 
+  currentTimeVel = millis();
   measuredDistance_1 = results_1.distance_mm;  // make this fast
   measuredDistance_2 = results_2.distance_mm;  // make this fast
   MappingFunction(measuredDistance_1, filtered_sensor_value_1);
@@ -614,40 +620,28 @@ void loop() {
 
   filtered_sensor_value = (measuredDistance_1 + measuredDistance_2) / 2;
 
+  currentDistance = (measuredDistance_1 + measuredDistance_2) / 2;
+  currentVelocity = (currentDistance - lastDistance);
+
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
     if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
       startRecordingMillis = millis();
       selectedMode = serial_c;
       modeRunning = true;
-      // countVibrationsTriggered = 0;
     }
     handleSerialInput(serial_c);
   }
-
-  // This is important here so that the serial is received without movement as well.
-  // auto dist = abs((float)(filtered_sensor_value - last_triggered_sensor_val));
-  // if (dist < kSensorJitterThreshold) {
-  //   return;
-  //   // filtered_sensor_value = last_triggered_sensor_val;
-  // }
-  // float dist = abs(filtered_sensor_value - last_triggered_sensor_val);
 
   if (modeRunning) {
     if (millis() - startRecordingMillis < conditionPeriod) {
       switch (selectedMode) {
         case 'a':
-          // if (dist < kSensorJitterThreshold) {
-          //   return;
-          // }
+          // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
           GenerateMotionCoupledPseudoForces();
           data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
           if (is_vibrating) { countVibrationsTriggered++; }
-          // Serial.println(filtered_sensor_value - last_triggered_sensor_val/ (millis() - (millis() - startRecordingMillis)));
-          // Serial.println(millis() - startRecordingMillis);
-          // delay(10);
-          // Serial.println(countVibrationsTriggered);
           break;
         case 'b':
           ReplayPseudoForcesLocal();
@@ -690,5 +684,6 @@ void loop() {
       }
     }
   }
-  // last_triggered_sensor_val = filtered_sensor_value;
+  lastTimeVel = currentTimeVel;
+  lastDistance = currentDistance;
 }
