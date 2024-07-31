@@ -114,6 +114,7 @@ static float kSignalAsymAmp = 1.f;
 static constexpr float kSignalContinuousAmp = 1.0f;
 const int16_t dat[256] = { -19754, -19235, -18393, -17264, -15891, -14325, -12622, -10836, -9021, -7223, -5485, -3840, -2314, -924, 317, 1405, 2341, 3129, 3776, 4293, 4692, 4983, 5180, 5295, 5339, 5322, 5255, 5147, 5006, 4838, 4651, 4449, 4236, 4018, 3796, 3574, 3355, 3139, 2929, 2725, 2528, 2339, 2159, 1987, 1825, 1671, 1527, 1391, 1265, 1146, 1036, 935, 841, 754, 675, 602, 537, 477, 424, 376, 334, 296, 264, 236, 213, 193, 178, 166, 157, 152, 149, 149, 152, 157, 164, 174, 185, 198, 212, 228, 246, 264, 283, 304, 325, 347, 369, 392, 415, 439, 463, 487, 511, 536, 560, 584, 608, 632, 655, 678, 701, 723, 745, 766, 787, 807, 826, 845, 863, 881, 897, 913, 928, 943, 956, 969, 980, 991, 1001, 1010, 1018, 1026, 1032, 1037, 1041, 1045, 1047, 1049, 1049, 1049, 1047, 1045, 1041, 1037, 1032, 1026, 1018, 1010, 1001, 991, 980, 969, 956, 943, 928, 913, 897, 881, 863, 845, 826, 807, 787, 766, 745, 723, 701, 678, 655, 632, 608, 584, 560, 536, 511, 487, 463, 439, 415, 392, 369, 347, 325, 304, 283, 264, 246, 228, 212, 198, 185, 174, 164, 157, 152, 149, 149, 152, 157, 166, 178, 193, 213, 236, 264, 296, 334, 376, 424, 477, 537, 602, 675, 754, 841, 935, 1036, 1146, 1265, 1391, 1527, 1671, 1825, 1987, 2159, 2339, 2528, 2725, 2929, 3139, 3355, 3574, 3796, 4018, 4236, 4449, 4651, 4838, 5006, 5147, 5255, 5322, 5339, 5295, 5180, 4983, 4692, 4293, 3776, 3129, 2341, 1405, 317, -924, -2314, -3840, -5485, -7223, -9021, -10836, -12622, -14325, -15891, -17264, -18393, -19235 };
 int16_t negDat[256];
+int16_t negDatTrial[256];
 
 #define Amplitude_ARRAYSIZE 3  // Change if we decide on 3 levels of amplitude
 float receivedInts[Amplitude_ARRAYSIZE] = { 0.4, 0.7, 1.0 };
@@ -233,7 +234,7 @@ void GeneratePseudoForces() {
     case 2:  // Pause after positive vibration
       if (currentMillis - previousPseudoForcesMillis >= kNoVibrationDuration) {
         signal.begin(kSignalWaveform);
-        signal.arbitraryWaveform(negDat, 170);
+        signal.arbitraryWaveform(negDatTrial, 170);
         signal.frequency(kSignalFrequencyHz);
         signal.amplitude(kSignalAsymAmp);
         previousPseudoForcesMillis = currentMillis;
@@ -575,7 +576,8 @@ void setup() {
   InitializeSensor(sensor_vl53l4cd_2);
   SetupAudio();
   for (int i = 0; i < 256; i++) {
-    negDat[i] = -dat[i];
+    negDat[i] = dat[i];
+    negDatTrial[i] = -dat[i];
   }
   memset(data, 0, sizeof(data));
 }
