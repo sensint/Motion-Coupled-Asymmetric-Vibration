@@ -108,7 +108,6 @@ uint16_t saveCountofVibrationsTriggeredSummary = 0;
 static uint16_t kNumberOfBins = 60;
 static constexpr short kSignalWaveform = static_cast<short>(Waveform::kArbitrary);
 static uint32_t kSignalDurationUs = 25 * 1000;  // in microseconds
-static uint16_t kSignalDurationMs = 25;         // in milliseconds
 static float kSignalFrequencyHz = 40.f;
 static float kSignalAsymAmp = 1.f;
 static constexpr float kSignalContinuousAmp = 1.0f;
@@ -269,35 +268,6 @@ void GeneratePseudoForces() {
   }
 }
 
-void GenerateContinuousVibration() {
-  unsigned long currentMillis = millis();
-
-  if (!is_vibrating) {
-    if (repetitionCountContinuousVibration < kContinuousVibrationRepetition) {
-      if (currentMillis - previousContinuousVibrationMillis >= kContinuousVibrationDuration) {
-        signal.begin(WAVEFORM_SINE);
-        signal.frequency(kSignalFrequencyHz);
-        signal.amplitude(kSignalContinuousAmp);
-        previousContinuousVibrationMillis = currentMillis;
-        is_vibrating = true;
-        // Serial.println("Continuous Vibration: Start");
-      }
-    } else {
-      repetitionCountContinuousVibration = 0;
-    }
-  } else {
-    if (currentMillis - previousContinuousVibrationMillis >= kContinuousVibrationDuration) {
-      signal.frequency(0);
-      signal.amplitude(0);
-      previousContinuousVibrationMillis = currentMillis;
-      delay(kNoVibrationDuration);  // Delay for the pause
-      is_vibrating = false;
-      repetitionCountContinuousVibration++;
-      // Serial.println("Continuous Vibration: Stop");
-    }
-  }
-}
-
 void GenerateMotionCoupledPseudoForces() {
   if (mapped_bin_id < last_bin_id) {
     // Uncomment below to stop the current vibration and play the next one.
@@ -340,90 +310,6 @@ void GenerateMotionCoupledVibration() {
 
   if (is_vibrating && pulse_time_us >= kSignalDurationUs) {
     StopPulse();
-  }
-}
-
-void ReplayPseudoForces() {
-  static unsigned long startMillisReplay = millis();
-  static unsigned long ReplaypulseStartMillis = 0;
-  static bool isVibrating = false;
-
-  if (Serial.available() > 0) {
-    String input = Serial.readStringUntil('\n');
-    int commaIndex = input.indexOf(',');
-    if (commaIndex > 0) {
-      String timeString = input.substring(0, commaIndex);
-      String isVibratingString = input.substring(commaIndex + 1);
-
-      unsigned long timeWhenVibrates = timeString.toFloat();
-      bool shouldVibrate = isVibratingString.toInt() == 1;
-
-      unsigned long currentMillisReplay = millis();
-      unsigned long elapsedMillisReplay = currentMillisReplay - startMillisReplay;
-
-      if (elapsedMillisReplay >= timeWhenVibrates) {
-        if (shouldVibrate && !isVibrating) {
-          StartPulsePosPF();
-          ReplaypulseStartMillis = currentMillisReplay;
-          isVibrating = true;
-        }
-      } else {
-        // Calculate delay needed to match the timing
-        unsigned long delayTime = timeWhenVibrates - elapsedMillisReplay;
-        delay(delayTime);                // Temporarily use delay to align with the incoming timing
-        currentMillisReplay = millis();  // Update currentMillis after delay
-        if (shouldVibrate && !isVibrating) {
-          StartPulsePosPF();
-          ReplaypulseStartMillis = currentMillisReplay;
-          isVibrating = true;
-        }
-      }
-    }
-  }
-
-  if (isVibrating && millis() - ReplaypulseStartMillis >= kSignalDurationMs) {
-    StopPulse();
-    isVibrating = false;
-  }
-}
-
-void ReplayPseudoForcesLocal() {
-  static unsigned long startMillisReplay = 0;
-  static unsigned long ReplaypulseStartMillis = 0;
-  static bool isVibrating = false;
-  // static unsigned int currentIndexReplay = 0;
-
-  if (currentIndexReplay < dataSize) {
-    unsigned long timeWhenVibrates = data[dataSize - 1 - currentIndexReplay].timestamp;
-    bool shouldVibrate = data[dataSize - 1 - currentIndexReplay].VibrationStatus;
-
-    unsigned long currentMillisReplay = millis();
-    unsigned long elapsedMillisReplay = currentMillisReplay - startMillisReplay;
-    if (elapsedMillisReplay >= timeWhenVibrates) {
-      if (shouldVibrate && !isVibrating) {
-        StartPulsePosPF();
-        ReplaypulseStartMillis = currentMillisReplay;
-        isVibrating = true;
-        is_vibrating = true;
-      }
-      currentIndexReplay++;
-    } else {
-      unsigned long delayTime = timeWhenVibrates - elapsedMillisReplay;
-      delay(delayTime);                // Temporarily use delay to align with the incoming timing
-      currentMillisReplay = millis();  // Update currentMillis after delay
-      if (shouldVibrate && !isVibrating) {
-        StartPulsePosPF();
-        ReplaypulseStartMillis = currentMillisReplay;
-        isVibrating = true;
-        is_vibrating = true;
-      }
-    }
-  }
-
-  if (isVibrating && millis() - ReplaypulseStartMillis >= kSignalDurationMs) {
-    StopPulse();
-    isVibrating = false;
-    is_vibrating = false;
   }
 }
 
@@ -568,6 +454,19 @@ void printDataArray(char mode, char amplitudeLevel) {
   }
 }
 
+void runAlgorithm2(){
+  // Frequency based algorithm
+}
+
+void runAlgorithm3(){
+  // Area based algorithm
+}
+
+void runAlgorithm4(){
+  // Amplitude based algorithm
+}
+
+
 void setup() {
   SetupSerial();
   DEV_I2C1.begin();  // Initialize I2C bus.
@@ -646,7 +545,7 @@ void loop() {
           if (is_vibrating) { countVibrationsTriggered++; }
           break;
         case 'b':
-          ReplayPseudoForcesLocal();
+          runAlgorithm2();
           data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
           dataIndex++;
           break;
@@ -666,7 +565,7 @@ void loop() {
           GeneratePseudoForces();
           break;
         case 'f':
-          GenerateContinuousVibration();
+          runAlgorithm3();
           break;
         case 'g':
           GenerateMotionCoupledVibration();
