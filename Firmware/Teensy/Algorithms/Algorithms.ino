@@ -8,9 +8,6 @@
 #include <stdint.h>
 #include <assert.h>
 
-// TO DO MAIN:
-// Maybe having the positive and negative cycles of the vibration stored?
-
 #define VERSION "v1.1.0"
 
 enum class Waveform : short {
@@ -41,8 +38,8 @@ float currentDistance = 0;
 float currentVelocity = 0;
 
 //=========== Laser Sensing ===========
-#define DEV_I2C1 Wire1
-#define DEV_I2C2 Wire2
+#define DEV_I2C1 Wire
+#define DEV_I2C2 Wire1
 VL53L4CD sensor_vl53l4cd_1(&DEV_I2C1, A0);
 VL53L4CD sensor_vl53l4cd_2(&DEV_I2C2, A1);
 
@@ -66,17 +63,6 @@ static constexpr float kFilterWeightFar = 2;
 static constexpr uint32_t kSensorMinValue = 20;
 static constexpr uint32_t kSensorMaxValue = 600;
 static constexpr uint32_t kSensorJitterThreshold = 5;
-
-//============================= STORING ===========================
-const int maxDataPoints = 30000;
-struct DataPoint {
-  unsigned long timestamp;
-  unsigned long distance;
-  bool VibrationStatus;
-};
-
-DataPoint data[maxDataPoints];
-int dataIndex = 0;
 
 // Timer Variables
 unsigned long startRecordingMillis;
@@ -136,6 +122,11 @@ int stepPseudoForces = 0;  // Step variable to track the current step in the pse
 // Timing and control variables for continuous vibration
 unsigned long previousContinuousVibrationMillis = 0;
 int repetitionCountContinuousVibration = 0;
+
+// Area
+int kNumSamples = 256;
+float timePeriod;
+float deltaTimePeriod;
 
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
@@ -381,6 +372,25 @@ void SummaryStatPseudoForces() {
   }
 }
 
+void CalculateArea() {
+  timePeriod = 1 / kSignalFrequencyHz;
+  deltaTimePeriod = timePeriod / kNumSamples;
+
+  // Calculate the area under the curve
+  double area = 0.0;
+  for (int i = 0; i < kNumSamples - 1; i++) {
+    area += (dat[i] + dat[i + 1]) / 2.0;  // * deltaTimePeriod;
+    Serial.print("Area under the curve: ");
+    Serial.println(area);
+  }
+
+  // Serial.print("Area under the curve: ");
+  // Serial.println(area - dat[0]);
+  delay(5);
+  Serial.print("Final Area:");
+  Serial.println(area - dat[0]);
+}
+
 void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
   kFilterWeight = map(measuredDistance, kSensorMinValue, kSensorMaxValue, kFilterWeightNear, kFilterWeightFar) * 0.1;
   filtered_sensor_value = (1.f - kFilterWeight) * filtered_sensor_value + (kFilterWeight)*measuredDistance;
@@ -397,27 +407,27 @@ void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
 
 void handleSerialInput(char serial_c) {
   if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
-    if (Serial.available()) {
-      amplitude_char = Serial.read();
-      switch (amplitude_char) {
-        case '0':
-          kSignalAsymAmp = receivedInts[0];
-          signal.amplitude(kSignalAsymAmp);
-          break;
-        case '1':
-          kSignalAsymAmp = receivedInts[1];
-          signal.amplitude(kSignalAsymAmp);
-          break;
-        case '2':
-          kSignalAsymAmp = receivedInts[2];
-          signal.amplitude(kSignalAsymAmp);
-          break;
-        default:
-          Serial.println("Invalid Amplitude Command");
-          break;
-      }
-      StopPulse();
-    }
+    // if (Serial.available()) {
+    //   amplitude_char = Serial.read();
+    //   switch (amplitude_char) {
+    //     case '0':
+    //       kSignalAsymAmp = receivedInts[0];
+    //       signal.amplitude(kSignalAsymAmp);
+    //       break;
+    //     case '1':
+    //       kSignalAsymAmp = receivedInts[1];
+    //       signal.amplitude(kSignalAsymAmp);
+    //       break;
+    //     case '2':
+    //       kSignalAsymAmp = receivedInts[2];
+    //       signal.amplitude(kSignalAsymAmp);
+    //       break;
+    //     default:
+    //       Serial.println("Invalid Amplitude Command");
+    //       break;
+    //   }
+    //   StopPulse();
+    // }
   } else if (serial_c == 'x') {
     if (Serial.available()) {
       float kSignalFrequencyHz = Serial.parseFloat();
@@ -438,34 +448,84 @@ void handleSerialInput(char serial_c) {
 }
 
 void printDataArray(char mode, char amplitudeLevel) {
-  for (unsigned int i = 0; i < dataSize; i++) {
-    Serial.print("Condition: ");
-    Serial.print(mode);
-    Serial.print(", AmpLevel: ");
-    Serial.print(amplitudeLevel);
-    Serial.print(", Index: ");
-    Serial.print(i);
-    Serial.print(", Time: ");
-    Serial.print(data[i].timestamp);
-    Serial.print(", Distance: ");
-    Serial.print(data[i].distance);
-    Serial.print(", Vibration: ");
-    Serial.println(data[i].VibrationStatus);
+}
+
+void runAlgorithm2() {
+  // Frequency based algorithm (Theoretical Algorithm based on Motion-coupled vibration)
+  // Step 1: When we are moving slow, the frequency of pulses should be more spread out
+  // Step 2: When we are moving fast, the frequency of pulses should be denser.
+  // So basically, we need to map the number of grains to the movement velocity
+  float kNumberOfBinsMin = 10;
+  float kNumberOfBinsMax = 100;
+  if (filtered_sensor_value < kSensorMinValue){
+    kNumberofBins = kNumberofBinsMin;
+  } else if (filtered_sensor_value > kSensorMaxValue){
+    kNumberofBins = kNumberOfBinsMax;
+  } else{
+    kNumberofBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on distance
+    // kNumberofBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
+    // kNumberofBins = map(velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on velocity
+    // kNumberofBins = map(velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
   }
+  Serial.print("Adjusted Bins: ");
+  Serial.prinln(kNumberofBins);
+
+  GenerateMotionCoupledPseudoForces();
 }
 
-void runAlgorithm2(){
-  // Frequency based algorithm
+void runAlgorithm3() {
+  // Area based algorithm (Theoretical Algorithm based on Pseudo Forces)
+  // Step 1: Calculate the area under one cycle which is being provided.
+  // Step 2: Calculate the area of over the movement speed (or basically how many cycles are provided)
+  // Step 3: Have the same area irrespective of the speed of movement. The way to do this is to play around with more cycles as the speed increases or trigger more individual pulses
 }
 
-void runAlgorithm3(){
-  // Area based algorithm
-}
-
-void runAlgorithm4(){
+void runAlgorithm4() {
   // Amplitude based algorithm
+  // This is more like an envelope based algorithm, where the amplitude is increased if the movement speed increases.
+  // It can also be mapped to the distance, where the amplitude increases as the distance increases.
+  float kSignalAsymAmpMin = 0.1;
+  float kSignalAsymVibMax = 1.0;
+  if (filtered_sensor_value < kSensorMinValue) {
+    kSignalAsymAmp = kSignalAsymAmpMin;
+  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kSignalAsymAmp = kSignalAsymAmpMax;
+  } else {
+    kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
+  }
+  signal.amplitude(kSignalAsymAmp);
+
+  Serial.print("Adjusted amplitude based on distance: ");
+  Serial.println(kSignalAsymAmp);
+
+  GenerateMotionCoupledPseudoForces();
 }
 
+void BowArrow() {
+  // The more away from the sensor we move, the larger the amplitude
+  // So basically, we need to map the position to the amplitude.
+  // This mapping algorithm should use the a-star (Generate Increasing Pseudo Forces) algorithms we might get
+}
+
+void WalkTheDog() {
+  // Walk-the-dog: <Object_Identifier, State, percent_pull>; State: 0 (no_pull); State: 1 (sniffing); State: 2 (continuous pull).
+  // The sniffing might need further definitions probably.
+}
+
+void HapticMagnets() {
+  // Magnets: <Object_Identifier, State, distance>; State: 0 (repel); State: 1 (attract)
+  //   float distanceThresholdMagnets;
+  //   float distanceBetweenMagnets; // Will be recieved over serial
+  //   if (distanceBetweenMagnets > distanceThresholdMagnets){
+  //     return;
+  //   } else{
+  //     if (magnetMode == modeAttract){
+  //       // Generate Continuous Positive / Negative Pseudo Forces on both hands with Amplitude increasing based on the distance between the magnets
+  //     } else{
+  //       // Generate Continous One Positive - One Negative Pseudo force on both hands with amplitude increasing based on the distance between the magnets.
+  //     }
+  //   }
+}
 
 void setup() {
   SetupSerial();
@@ -478,7 +538,7 @@ void setup() {
     negDat[i] = dat[i];
     negDatTrial[i] = -dat[i];
   }
-  memset(data, 0, sizeof(data));
+  CalculateArea();
 }
 
 void loop() {
@@ -513,6 +573,8 @@ void loop() {
     sensor_vl53l4cd_2.VL53L4CD_GetResult(&results_2);
   }
 
+  // CalculateArea();
+
   currentTimeVel = millis();
   measuredDistance_1 = results_1.distance_mm;  // make this fast
   measuredDistance_2 = results_2.distance_mm;  // make this fast
@@ -522,7 +584,9 @@ void loop() {
   filtered_sensor_value = (measuredDistance_1 + measuredDistance_2) / 2;
 
   currentDistance = (measuredDistance_1 + measuredDistance_2) / 2;
-  currentVelocity = (currentDistance - lastDistance);
+  currentVelocity = (currentDistance - lastDistance);  // / (lastTimeVel - currentTimeVel);
+  // Serial.println(currentVelocity);
+  // delay(50);
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
@@ -535,54 +599,33 @@ void loop() {
   }
 
   if (modeRunning) {
-    if (millis() - startRecordingMillis < conditionPeriod) {
-      switch (selectedMode) {
-        case 'a':
-          // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
-          GenerateMotionCoupledPseudoForces();
-          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
-          dataIndex++;
-          if (is_vibrating) { countVibrationsTriggered++; }
-          break;
-        case 'b':
-          runAlgorithm2();
-          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
-          dataIndex++;
-          break;
-        case 'c':
-          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
-          dataIndex++;
-          SummaryStatPseudoForces();
-          break;
-        case 'd':
-          data[dataIndex] = { millis() - startRecordingMillis, ((measuredDistance_1 + measuredDistance_2) / 2), is_vibrating };
-          dataIndex++;
-          SummaryStatPseudoForces();
-          break;
-
-        // Non Experiment Conditions //
-        case 'e':
-          GeneratePseudoForces();
-          break;
-        case 'f':
-          runAlgorithm3();
-          break;
-        case 'g':
-          GenerateMotionCoupledVibration();
-          break;
-      }
-    } else {
-      modeRunning = false;
-      StopPulse();
-      currentIndexReplay = 0;
-      dataIndex = 0;
-      if (selectedMode == 'a') {
-        saveCountofVibrationsTriggeredSummary = countVibrationsTriggered;
-        countVibrationsTriggered = 0;
-      }
-      if (selectedMode == 'a' || selectedMode == 'b' || selectedMode == 'c' || selectedMode == 'd') {
-        printDataArray(selectedMode, amplitude_char);
-      }
+    switch (selectedMode) {
+      case 'a':
+        // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
+        GenerateMotionCoupledPseudoForces();
+        Serial.println("MCAV_Basic");
+        break;
+      case 'b':
+        runAlgorithm2();
+        Serial.println("Algorithm 2");
+        break;
+      case 'c':
+        HapticMagnets();
+        Serial.println("Magnets");
+        break;
+      case 'd':
+        Serial.println("Do Nothing");
+        return;
+        break;
+      case 'e':
+        GeneratePseudoForces();
+        break;
+      case 'f':
+        runAlgorithm3();
+        break;
+      case 'g':
+        GenerateMotionCoupledVibration();
+        break;
     }
   }
   lastTimeVel = currentTimeVel;
