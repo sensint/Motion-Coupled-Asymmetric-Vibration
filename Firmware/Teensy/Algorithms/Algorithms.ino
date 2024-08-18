@@ -10,6 +10,14 @@
 
 #define VERSION "v1.1.0"
 
+// TODO:
+// 1. Check if the filtered_sensor_value is more smoother
+// 2. Bell Curve algorithm for number of grains
+// 3. Writing the function for algorithm 2, time-coupled algorithm
+// 4. Writing the functions for the other 2 applications
+
+// Our algorithms are motion-coupled
+
 enum class Waveform : short {
   kSine = 0,
   kSawtooth = 1,
@@ -36,6 +44,10 @@ unsigned long currentTimeVel;
 float lastDistance = 0;
 float currentDistance = 0;
 float currentVelocity = 0;
+float filtered_velocity_value = 0.f;
+static constexpr float kVelocityFilterWeight = 0.1;
+static constexpr float kMaxVelocity = 40;  // cm/s
+static constexpr float kMinVelocity = 5;   // cm/s (Basically, if the velocity is lower than this, consider it to have stopped)
 
 //=========== Laser Sensing ===========
 #define DEV_I2C1 Wire
@@ -52,6 +64,7 @@ float filtered_sensor_value_2 = 0.f;
 unsigned long measuredDistance_1;
 unsigned long measuredDistance_2;
 float filtered_sensor_value = 0.f;
+float filtered_sensor_value_new = 0.f;
 float last_triggered_sensor_val = 0.f;
 unsigned long measuredDistance;
 int sensorSamplingFrequency = 100;
@@ -63,15 +76,6 @@ static constexpr float kFilterWeightFar = 2;
 static constexpr uint32_t kSensorMinValue = 20;
 static constexpr uint32_t kSensorMaxValue = 600;
 static constexpr uint32_t kSensorJitterThreshold = 5;
-
-// Timer Variables
-unsigned long startRecordingMillis;
-unsigned long currentRecordingMillis;
-const unsigned long conditionPeriod = 15000;  // 15 seconds
-
-// ========== Replay =============
-unsigned int currentIndexReplay = 0;
-unsigned int dataSize = sensorSamplingFrequency * conditionPeriod * 0.001;
 
 //=========== audio variables ===========
 AudioSynthWaveform signal;
@@ -111,17 +115,11 @@ const long kContinuousVibrationDuration = 2500;
 uint16_t kpseudoForceRepetition = 1;
 uint16_t kpseudoForceRepetitionTrial = 3;
 const long kNoVibrationDuration = 100;
-uint16_t kContinuousVibrationRepetition = 3;
-unsigned long previousMillis = 0;
 
 // Timing and control variables for pseudo forces
 unsigned long previousPseudoForcesMillis = 0;
 int repetitionCountPseudoForces = 0;
 int stepPseudoForces = 0;  // Step variable to track the current step in the pseudo forces sequence
-
-// Timing and control variables for continuous vibration
-unsigned long previousContinuousVibrationMillis = 0;
-int repetitionCountContinuousVibration = 0;
 
 // Area
 int kNumSamples = 256;
@@ -130,6 +128,26 @@ float deltaTimePeriod;
 
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
+struct ParsedData {
+  int objectID;
+  int state;
+  float value;
+};
+
+ParsedData parseSerialData(const String &data) {
+  ParsedData parsedData = { 0, 0, 0.0f };
+
+  int firstComma = data.indexOf(',');
+  int secondComma = data.indexOf(',', firstComma + 1);
+
+  if (firstComma != -1 && secondComma != -1) {
+    parsedData.objectID = data.substring(0, firstComma).toInt();
+    parsedData.state = data.substring(firstComma + 1, secondComma).toInt();
+    parsedData.value = data.substring(secondComma + 1).toFloat();
+  }
+
+  return parsedData;
+}
 
 void SetupSerial() {
   while (!Serial && millis() < 2000)
@@ -174,17 +192,6 @@ void StartPulseNegPF() {
   pulse_time_us = 0;
   is_vibrating = true;
   // Serial.printf("Start Neg pulse \n\t bins: %d", mapped_bin_id);
-  // Serial.println(F("=====================================================\n\n"));
-}
-
-void StartPulseCV() {
-  signal.begin(WAVEFORM_SINE);
-  signal.frequency(kSignalFrequencyHz);
-  signal.phase(0.0);
-  signal.amplitude(kSignalContinuousAmp);
-  pulse_time_us = 0;
-  is_vibrating = true;
-  // Serial.printf("Start continuous pulse \n\t bins: %d", mapped_bin_id);
   // Serial.println(F("=====================================================\n\n"));
 }
 
@@ -286,92 +293,6 @@ void GenerateMotionCoupledPseudoForces() {
   }
 }
 
-void GenerateMotionCoupledVibration() {
-  if (mapped_bin_id != last_bin_id) {
-    // Uncomment below to stop the current vibration and play the next one.
-    if (is_vibrating) {  // This loop is for the case when we want to stop the ongoing vibration and start the next one.
-      StopPulse();
-      delayMicroseconds(100);
-    }
-
-    StartPulseCV();
-    last_bin_id = mapped_bin_id;
-    last_triggered_sensor_val = filtered_sensor_value;
-  }
-
-  if (is_vibrating && pulse_time_us >= kSignalDurationUs) {
-    StopPulse();
-  }
-}
-
-void SummaryStatPseudoForces() {
-  unsigned long currentMillis = millis();
-  unsigned long SummaryStatPF_duration = saveCountofVibrationsTriggeredSummary * kSignalDurationUs * pow(10, -3);
-  if (SummaryStatPF_duration > conditionPeriod) {
-    SummaryStatPF_duration = conditionPeriod;
-  }
-
-  switch (stepPseudoForces) {
-    case 0:  // Start positive vibration
-      if (repetitionCountPseudoForces < kpseudoForceRepetition) {
-        signal.begin(kSignalWaveform);
-        signal.arbitraryWaveform(dat, 170);
-        signal.frequency(kSignalFrequencyHz);
-        signal.amplitude(kSignalAsymAmp);
-        previousPseudoForcesMillis = currentMillis;
-        stepPseudoForces = 1;
-        is_vibrating = true;
-      }
-      break;
-
-    case 1:  // End positive vibration
-      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration / 2) {
-        signal.frequency(0);
-        signal.amplitude(0);
-        previousPseudoForcesMillis = currentMillis;
-        stepPseudoForces = 2;
-        is_vibrating = false;
-      }
-      break;
-
-    case 2:  // Pause after positive vibration
-      if (currentMillis - previousPseudoForcesMillis >= kNoVibrationDuration) {
-        signal.begin(kSignalWaveform);
-        signal.arbitraryWaveform(negDat, 170);
-        signal.frequency(kSignalFrequencyHz);
-        signal.amplitude(kSignalAsymAmp);
-        previousPseudoForcesMillis = currentMillis;
-        stepPseudoForces = 3;
-        // Serial.println("Pseudo Forces: Starting negative vibration");
-        is_vibrating = true;
-      }
-      break;
-
-    case 3:  // End negative vibration
-      if (currentMillis - previousPseudoForcesMillis >= SummaryStatPF_duration / 2) {
-        signal.frequency(0);
-        signal.amplitude(0);
-        previousPseudoForcesMillis = currentMillis;
-        stepPseudoForces = 4;
-        is_vibrating = false;
-      }
-      break;
-
-    case 4:  // Pause after negative vibration
-      if (currentMillis - previousPseudoForcesMillis >= kNoVibrationDuration) {
-        repetitionCountPseudoForces = 0;
-        stepPseudoForces = 0;
-      }
-      break;
-
-    default:  // All repetitions complete
-      if (repetitionCountPseudoForces >= kpseudoForceRepetition) {
-        Serial.println("Pseudo Forces: All repetitions complete");
-      }
-      break;
-  }
-}
-
 void CalculateArea() {
   timePeriod = 1 / kSignalFrequencyHz;
   deltaTimePeriod = timePeriod / kNumSamples;
@@ -400,9 +321,19 @@ void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
   if (filtered_sensor_value <= kSensorMinValue) {
     filtered_sensor_value = kSensorMinValue;
   }
-
   mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
   // Serial.println(mapped_bin_id);
+}
+
+void VelocityMappingFunction() {
+  filtered_velocity_value = (1.f - kVelocityFilterWeight) * filtered_velocity_value + (kVelocityFilterWeight)*currentVelocity;
+  if (filtered_velocity_value < kMinVelocity) {
+    filtered_velocity_value = 0;
+  }
+  if (filtered_velocity_value >= kMaxVelocity) {
+    filtered_velocity_value = kMaxVelocity;
+  }
+  mapped_bin_id = map(filtered_velocity_value, 0, kMaxVelocity, 0, kNumberOfBins);
 }
 
 void handleSerialInput(char serial_c) {
@@ -447,7 +378,27 @@ void handleSerialInput(char serial_c) {
   }
 }
 
-void printDataArray(char mode, char amplitudeLevel) {
+void runAlgorithm1() {
+  // Velocity mapped to amplitude, number of grains,
+  int kNumberOfBinsMin = 10;
+  int kNumberOfBinsMax = 100;
+  float kSignalAsymAmpMin = 0.1;
+  float kSignalAsymAmpMax = 1.0;
+  if (filtered_sensor_value < kSensorMinValue) {
+    kSignalAsymAmp = kSignalAsymAmpMin;
+    kNumberOfBins = 0;
+  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kSignalAsymAmp = kSignalAsymAmpMax;
+    kNumberOfBins = 0;
+  } else {
+    kNumberOfBins = map(filtered_velocity_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on velocity
+    kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
+  }
+  Serial.printf("Bins are: %d Amplitude is: %.2f\n", kNumberOfBins, kSignalAsymAmp);
+  // mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
+  // Something similar needs to be done for velocity.
+  VelocityMappingFunction();
+  GenerateMotionCoupledPseudoForces();
 }
 
 void runAlgorithm2() {
@@ -455,26 +406,28 @@ void runAlgorithm2() {
   // Step 1: When we are moving slow, the frequency of pulses should be more spread out
   // Step 2: When we are moving fast, the frequency of pulses should be denser.
   // So basically, we need to map the number of grains to the movement velocity
+
   float kNumberOfBinsMin = 10;
+  float kNumberOfBinZero = 0;
   float kNumberOfBinsMax = 100;
-  if (filtered_sensor_value < kSensorMinValue){
-    kNumberofBins = kNumberofBinsMin;
-  } else if (filtered_sensor_value > kSensorMaxValue){
-    kNumberofBins = kNumberOfBinsMax;
-  } else{
-    kNumberofBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on distance
+  if (filtered_sensor_value < kSensorMinValue) {
+    kNumberOfBins = kNumberOfBinZero;
+  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kNumberOfBins = kNumberOfBinZero;
+  } else {
+    kNumberOfBins = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on distance
     // kNumberofBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
-    // kNumberofBins = map(velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on velocity
-    // kNumberofBins = map(velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
+    // kNumberofBins = map(filtered_velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on velocity
+    // kNumberofBins = map(filtered_velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on velocity
   }
   Serial.print("Adjusted Bins: ");
-  Serial.prinln(kNumberofBins);
-
+  Serial.println(kNumberOfBins);
+  mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
   GenerateMotionCoupledPseudoForces();
 }
 
 void runAlgorithm3() {
-  // Area based algorithm (Theoretical Algorithm based on Pseudo Forces)
+  // Area based algorithm (Theoretical Algorithm based on Pseudo Forces) TIME COUPLED ASYMMETRIC VIBRATION
   // Step 1: Calculate the area under one cycle which is being provided.
   // Step 2: Calculate the area of over the movement speed (or basically how many cycles are provided)
   // Step 3: Have the same area irrespective of the speed of movement. The way to do this is to play around with more cycles as the speed increases or trigger more individual pulses
@@ -485,7 +438,7 @@ void runAlgorithm4() {
   // This is more like an envelope based algorithm, where the amplitude is increased if the movement speed increases.
   // It can also be mapped to the distance, where the amplitude increases as the distance increases.
   float kSignalAsymAmpMin = 0.1;
-  float kSignalAsymVibMax = 1.0;
+  float kSignalAsymAmpMax = 1.0;
   if (filtered_sensor_value < kSensorMinValue) {
     kSignalAsymAmp = kSignalAsymAmpMin;
   } else if (filtered_sensor_value > kSensorMaxValue) {
@@ -493,6 +446,7 @@ void runAlgorithm4() {
   } else {
     kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
   }
+
   signal.amplitude(kSignalAsymAmp);
 
   Serial.print("Adjusted amplitude based on distance: ");
@@ -501,10 +455,39 @@ void runAlgorithm4() {
   GenerateMotionCoupledPseudoForces();
 }
 
-void BowArrow() {
+void runAlgorithmBellCurve() {
+  float bellCurveAmplitude = 1.0f;
+  float mu = 0.5f;     // Center of the bell curve (in terms of velocity)
+  float sigma = 0.2f;  // Width of the bell curve
+
+  float normalizedVelocity = constrain(filtered_velocity_value, 0, 1);  // Normalizing the velocity
+  kSignalAsymAmp = bellCurveAmplitude * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+  signal.amplitude(kSignalAsymAmp);
+
+  Serial.print("Adjusted amplitude based on distance: ");
+  Serial.println(kSignalAsymAmp);
+
+  GenerateMotionCoupledPseudoForces();
+}
+
+void BowArrow(const ParsedData &parsedData) {
   // The more away from the sensor we move, the larger the amplitude
   // So basically, we need to map the position to the amplitude.
   // This mapping algorithm should use the a-star (Generate Increasing Pseudo Forces) algorithms we might get
+  switch (parsedData.state) {
+    case 0:  // No Stretch
+      kSignalAsymAmp = 0;
+      StopPulse();
+      Serial.println("BowArrow - No Stretch");
+      break;
+    case 1:
+      kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
+      signal.amplitude(kSignalAsymAmp);
+      Serial.print("BowArrow - Stretched with percent stretch: ");
+      Serial.println(parsedData.value);
+      break;
+  }
+  GenerateMotionCoupledPseudoForces();
 }
 
 void WalkTheDog() {
@@ -538,7 +521,7 @@ void setup() {
     negDat[i] = dat[i];
     negDatTrial[i] = -dat[i];
   }
-  CalculateArea();
+  // CalculateArea();
 }
 
 void loop() {
@@ -582,51 +565,54 @@ void loop() {
   MappingFunction(measuredDistance_2, filtered_sensor_value_2);
 
   filtered_sensor_value = (measuredDistance_1 + measuredDistance_2) / 2;
+  filtered_sensor_value_new = (filtered_sensor_value_1 + filtered_sensor_value_2) / 2;
+  Serial.print(filtered_sensor_value);
+  Serial.print(",");
+  Serial.println(filtered_sensor_value_new);
+  delay(10);
 
   currentDistance = (measuredDistance_1 + measuredDistance_2) / 2;
   currentVelocity = (currentDistance - lastDistance);  // / (lastTimeVel - currentTimeVel);
+  filtered_velocity_value = (1.f - kVelocityFilterWeight) * filtered_velocity_value + (kVelocityFilterWeight)*currentVelocity;
+
   // Serial.println(currentVelocity);
   // delay(50);
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
     if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
-      startRecordingMillis = millis();
       selectedMode = serial_c;
-      modeRunning = true;
     }
     handleSerialInput(serial_c);
   }
 
-  if (modeRunning) {
-    switch (selectedMode) {
-      case 'a':
-        // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
-        GenerateMotionCoupledPseudoForces();
-        Serial.println("MCAV_Basic");
-        break;
-      case 'b':
-        runAlgorithm2();
-        Serial.println("Algorithm 2");
-        break;
-      case 'c':
-        HapticMagnets();
-        Serial.println("Magnets");
-        break;
-      case 'd':
-        Serial.println("Do Nothing");
-        return;
-        break;
-      case 'e':
-        GeneratePseudoForces();
-        break;
-      case 'f':
-        runAlgorithm3();
-        break;
-      case 'g':
-        GenerateMotionCoupledVibration();
-        break;
-    }
+  switch (selectedMode) {
+    case 'a':
+      // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
+      GenerateMotionCoupledPseudoForces();
+      Serial.println("MCAV_Basic");
+      break;
+    case 'b':
+      runAlgorithm2();
+      Serial.println("Algorithm 2");
+      break;
+    case 'c':
+      HapticMagnets();
+      Serial.println("Magnets");
+      break;
+    case 'd':
+      Serial.println("Do Nothing");
+      return;
+      break;
+    case 'e':
+      GeneratePseudoForces();
+      break;
+    case 'f':
+      runAlgorithm3();
+      break;
+    case 'g':
+      runAlgorithm4();
+      break;
   }
   lastTimeVel = currentTimeVel;
   lastDistance = currentDistance;
