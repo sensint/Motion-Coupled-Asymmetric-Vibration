@@ -11,8 +11,7 @@
 #define VERSION "v1.1.0"
 
 // TODO:
-// 1. Check if the filtered_sensor_value is more smoother
-// 2. Bell Curve algorithm for number of grains
+// 2. Check if the Grain Number actually changes (Maybe print time, along with grain number)
 // 3. Writing the function for algorithm 2, time-coupled algorithm
 // 4. Writing the functions for the other 2 applications
 
@@ -46,12 +45,12 @@ float currentDistance = 0;
 float currentVelocity = 0;
 float filtered_velocity_value = 0.f;
 static constexpr float kVelocityFilterWeight = 0.1;
-static constexpr float kMaxVelocity = 40;  // cm/s
-static constexpr float kMinVelocity = 5;   // cm/s (Basically, if the velocity is lower than this, consider it to have stopped)
+static constexpr float kMaxVelocity = 40;   // cm/s
+static constexpr float kMinVelocity = -40;  // cm/s (Basically, if the velocity is lower than this, consider it to have stopped)
 
 //=========== Laser Sensing ===========
-#define DEV_I2C1 Wire
-#define DEV_I2C2 Wire1
+#define DEV_I2C1 Wire1
+#define DEV_I2C2 Wire2
 VL53L4CD sensor_vl53l4cd_1(&DEV_I2C1, A0);
 VL53L4CD sensor_vl53l4cd_2(&DEV_I2C2, A1);
 
@@ -71,10 +70,10 @@ int sensorSamplingFrequency = 100;
 
 //=========== Laser Sensing Constants ===========
 float kFilterWeight = 0.5;
-static constexpr float kFilterWeightNear = 8;
+static constexpr float kFilterWeightNear = 2;
 static constexpr float kFilterWeightFar = 2;
 static constexpr uint32_t kSensorMinValue = 20;
-static constexpr uint32_t kSensorMaxValue = 600;
+static constexpr uint32_t kSensorMaxValue = 650;
 static constexpr uint32_t kSensorJitterThreshold = 5;
 
 //=========== audio variables ===========
@@ -322,7 +321,6 @@ void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
     filtered_sensor_value = kSensorMinValue;
   }
   mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
-  // Serial.println(mapped_bin_id);
 }
 
 void VelocityMappingFunction() {
@@ -378,97 +376,283 @@ void handleSerialInput(char serial_c) {
   }
 }
 
-void runAlgorithm1() {
-  // Velocity mapped to amplitude, number of grains,
-  int kNumberOfBinsMin = 10;
+// void runAlgorithm1() {
+//   // Velocity mapped to amplitude, number of grains,
+//   int kNumberOfBinsMin = 50;
+//   int kNumberOfBinsMax = 100;
+//   float kSignalAsymAmpMin = 0.4;
+//   float kSignalAsymAmpMax = 1.0;
+
+//   if (filtered_sensor_value < kSensorMinValue) {
+//     kSignalAsymAmp = kSignalAsymAmpMin;
+//     kNumberOfBins = 0;
+//   } else if (filtered_sensor_value > kSensorMaxValue) {
+//     kSignalAsymAmp = kSignalAsymAmpMax;
+//     kNumberOfBins = 0;
+//   } else {
+//     // kNumberOfBins = map((int)filtered_velocity_value, 0, kMaxVelocity, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on velocity
+//     // kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
+//     // kSignalAsymAmp = map(filtered_velocity_value, 0, 10, kSignalAsymAmpMin, kSignalAsymAmpMax);
+//     kSignalAsymAmp = map(filtered_velocity_value, 0, 10, kSignalAsymAmpMax, kSignalAsymAmpMin);
+//   }
+//   signal.amplitude(kSignalAsymAmp);
+//   // if(last_bin_id == mapped_bin_id){StopPulse();}
+//   StopPulse();
+//   Serial.printf("Bins are: %d Amplitude is: %.2f Velocity is: %.2f\n", kNumberOfBins, kSignalAsymAmp, filtered_velocity_value);
+//   // mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
+//   // Something similar needs to be done for velocity.
+//   // VelocityMappingFunction();
+//   GenerateMotionCoupledPseudoForces();
+// }
+
+void LinVel2Amp1() {
+  // Velocity linearly mapped to amplitude,
+  float kSignalAsymAmpMin = 0.4;
+  float kSignalAsymAmpMax = 1.0;
+  kNumberOfBins = 200;
+
+  if (filtered_sensor_value < kSensorMinValue) {
+    kSignalAsymAmp = kSignalAsymAmpMin;
+  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kSignalAsymAmp = kSignalAsymAmpMax;
+  } else {
+    kSignalAsymAmp = map(filtered_velocity_value, 0, 10, kSignalAsymAmpMin, kSignalAsymAmpMax);
+    // kSignalAsymAmp = map(filtered_velocity_value, 0, 10, kSignalAsymAmpMax, kSignalAsymAmpMin); // Inverse Mapping
+  }
+
+  signal.amplitude(kSignalAsymAmp);
+  // if(last_bin_id == mapped_bin_id){StopPulse();}
+  StopPulse();
+  Serial.printf("Amplitude is: %.2f Velocity is: %.2f\n", kSignalAsymAmp, filtered_velocity_value);
+  GenerateMotionCoupledPseudoForces();
+}
+
+void LinVel2Bin2() {
+  // Velocity linearly mapped to number of bins
+  int kNumberOfBinsMin = 50;
   int kNumberOfBinsMax = 100;
-  float kSignalAsymAmpMin = 0.1;
-  float kSignalAsymAmpMax = 1.0;
+
   if (filtered_sensor_value < kSensorMinValue) {
-    kSignalAsymAmp = kSignalAsymAmpMin;
     kNumberOfBins = 0;
   } else if (filtered_sensor_value > kSensorMaxValue) {
-    kSignalAsymAmp = kSignalAsymAmpMax;
     kNumberOfBins = 0;
   } else {
-    kNumberOfBins = map(filtered_velocity_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on velocity
-    kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
+    kNumberOfBins = map((int)filtered_velocity_value, 0, kMaxVelocity, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on velocity
   }
-  Serial.printf("Bins are: %d Amplitude is: %.2f\n", kNumberOfBins, kSignalAsymAmp);
-  // mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
-  // Something similar needs to be done for velocity.
-  VelocityMappingFunction();
+
+  Serial.printf("Bins are: %d Velocity is: %.2f\n", kNumberOfBins, filtered_velocity_value);
   GenerateMotionCoupledPseudoForces();
 }
 
-void runAlgorithm2() {
-  // Frequency based algorithm (Theoretical Algorithm based on Motion-coupled vibration)
-  // Step 1: When we are moving slow, the frequency of pulses should be more spread out
-  // Step 2: When we are moving fast, the frequency of pulses should be denser.
-  // So basically, we need to map the number of grains to the movement velocity
-
-  float kNumberOfBinsMin = 10;
-  float kNumberOfBinZero = 0;
-  float kNumberOfBinsMax = 100;
-  if (filtered_sensor_value < kSensorMinValue) {
-    kNumberOfBins = kNumberOfBinZero;
-  } else if (filtered_sensor_value > kSensorMaxValue) {
-    kNumberOfBins = kNumberOfBinZero;
-  } else {
-    kNumberOfBins = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on distance
-    // kNumberofBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
-    // kNumberofBins = map(filtered_velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on velocity
-    // kNumberofBins = map(filtered_velocity_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on velocity
-  }
-  Serial.print("Adjusted Bins: ");
-  Serial.println(kNumberOfBins);
-  mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
-  GenerateMotionCoupledPseudoForces();
-}
-
-void runAlgorithm3() {
-  // Area based algorithm (Theoretical Algorithm based on Pseudo Forces) TIME COUPLED ASYMMETRIC VIBRATION
-  // Step 1: Calculate the area under one cycle which is being provided.
-  // Step 2: Calculate the area of over the movement speed (or basically how many cycles are provided)
-  // Step 3: Have the same area irrespective of the speed of movement. The way to do this is to play around with more cycles as the speed increases or trigger more individual pulses
-}
-
-void runAlgorithm4() {
-  // Amplitude based algorithm
-  // This is more like an envelope based algorithm, where the amplitude is increased if the movement speed increases.
-  // It can also be mapped to the distance, where the amplitude increases as the distance increases.
-  float kSignalAsymAmpMin = 0.1;
+void LinDisp2Amp3() {
+  // Displacement linearly mapped to amplitude
+  kNumberOfBins = 200;  // This one works better with higher bin numbers.
+  float kSignalAsymAmpMin = 0.4;
   float kSignalAsymAmpMax = 1.0;
+
   if (filtered_sensor_value < kSensorMinValue) {
-    kSignalAsymAmp = kSignalAsymAmpMin;
-  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kSignalAsymAmp = 0;
+  } else if (filtered_sensor_value >= kSensorMaxValue) {
     kSignalAsymAmp = kSignalAsymAmpMax;
   } else {
     kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
   }
 
   signal.amplitude(kSignalAsymAmp);
+  StopPulse();
 
   Serial.print("Adjusted amplitude based on distance: ");
   Serial.println(kSignalAsymAmp);
-
   GenerateMotionCoupledPseudoForces();
 }
 
-void runAlgorithmBellCurve() {
+void LinDisp2Bin4() {
+  // Displacement linearly mapped to number of bins
+  int kNumberOfBinsMin = 50;
+  int kNumberOfBinsMax = 100;
+
+  if (filtered_sensor_value < kSensorMinValue) {
+    kNumberOfBins = 0;
+  } else if (filtered_sensor_value > kSensorMaxValue) {
+    kNumberOfBins = 0;
+  } else {
+    kNumberOfBins = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on displacement
+    // kNumberOfBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on displacement
+  }
+
+  Serial.printf("Bins are: %d Displacement is: %.2f\n", kNumberOfBins, filtered_sensor_value);
+  GenerateMotionCoupledPseudoForces();
+}
+
+void GaussVel2Amp5() {
+  kNumberOfBins = 200;
+  float kSignalAsymAmpMin = 0.4f;
   float bellCurveAmplitude = 1.0f;
-  float mu = 0.5f;     // Center of the bell curve (in terms of velocity)
-  float sigma = 0.2f;  // Width of the bell curve
+  float mu = 0.5f * kMaxVelocity;     // Center of the bell curve (in terms of velocity)
+  float sigma = 0.2f * kMaxVelocity;  // Width of the bell curve
 
-  float normalizedVelocity = constrain(filtered_velocity_value, 0, 1);  // Normalizing the velocity
+  float normalizedVelocity = constrain(filtered_velocity_value, 0, kMaxVelocity);  // Normalizing the velocity
   kSignalAsymAmp = bellCurveAmplitude * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+  kSignalAsymAmp = kSignalAsymAmpMin + (kSignalAsymAmp * (bellCurveAmplitude - kSignalAsymAmpMin));
+  signal.amplitude(kSignalAsymAmp);
+
+  Serial.print("Adjusted amplitude based on velocity: ");
+  Serial.println(kSignalAsymAmp);
+  StopPulse();
+
+  GenerateMotionCoupledPseudoForces();
+}
+
+void GaussVel2Bin6() {
+  // float kNumberOfBinsBellMin = 40;
+  float kNumberOfBinsBell = 100;
+  float mu = 0.5f * kMaxVelocity;     // Center of the bell curve (in terms of velocity)
+  float sigma = 0.2f * kMaxVelocity;  // Width of the bell curve
+
+  float normalizedVelocity = constrain(filtered_velocity_value, 0, kMaxVelocity);  // Normalizing the velocity
+  float bins = kNumberOfBinsBell * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+  kNumberOfBins = round(bins);
+  // int mappedBins = constrain((int)round(bins), 1, kNumberOfBins);
+  Serial.print("Bell Curve - Number of bins based on velocity: ");
+  Serial.println(kNumberOfBins);
+  GenerateMotionCoupledPseudoForces();
+}
+
+void GaussDisp2Amp7() {
+  float kSignalAsymAmpMin = 0.4f;
+  float bellCurveAmplitude = 1.0f;
+  float mu = 0.5f * kSensorMaxValue;     // Center of the bell curve (in terms of max Sensor Value)
+  float sigma = 0.2f * kSensorMaxValue;  // Width of the bell curve
+
+  float normalizedVelocity = constrain(filtered_sensor_value, kSensorMinValue, kSensorMaxValue);
+  kSignalAsymAmp = bellCurveAmplitude * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+  kSignalAsymAmp = kSignalAsymAmpMin + (kSignalAsymAmp * (bellCurveAmplitude - kSignalAsymAmpMin));
   signal.amplitude(kSignalAsymAmp);
 
   Serial.print("Adjusted amplitude based on distance: ");
   Serial.println(kSignalAsymAmp);
+  StopPulse();
 
   GenerateMotionCoupledPseudoForces();
 }
+
+void GaussDisp2Bin8() {
+  // float kNumberOfBinsBellMin = 40;
+  float kNumberOfBinsBell = 100;
+  float mu = 0.5f * kSensorMaxValue;     // Center of the bell curve (in terms of velocity)
+  float sigma = 0.2f * kSensorMaxValue;  // Width of the bell curve
+
+  float normalizedVelocity = constrain(filtered_sensor_value, kSensorMinValue, kSensorMaxValue);
+  float bins = kNumberOfBinsBell * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+  kNumberOfBins = round(bins);
+  // int mappedBins = constrain((int)round(bins), 1, kNumberOfBins);
+  Serial.print("Bell Curve - Number of bins based on velocity: ");
+  Serial.println(kNumberOfBins);
+  GenerateMotionCoupledPseudoForces();
+}
+
+void TimeAreaBasedAlgo() {}
+
+// void runAlgorithm2() {
+//   // Frequency based algorithm (Theoretical Algorithm based on Motion-coupled vibration)
+//   // Step 1: When we are moving slow, the frequency of pulses should be more spread out
+//   // Step 2: When we are moving fast, the frequency of pulses should be denser.
+//   // So basically, we need to map the number of grains to the movement velocity
+
+//   float kNumberOfBinsMin = 50;
+//   float kNumberOfBinZero = 0;
+//   float kNumberOfBinsMax = 100;
+//   if (filtered_sensor_value < kSensorMinValue) {
+//     kNumberOfBins = kNumberOfBinZero;
+//   } else if (filtered_sensor_value > kSensorMaxValue) {
+//     kNumberOfBins = kNumberOfBinZero;
+//   } else {
+//     // kNumberOfBins = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kNumberOfBinsMin, kNumberOfBinsMax);  // Mapping based on distance
+//     // kNumberOfBins = map(filtered_sensor_value,  kSensorMinValue, kSensorMaxValue, kNumberOfBinsMax, kNumberOfBinsMin); // Inverse Mapping based on distance
+//     // kNumberOfBins = map((int)filtered_velocity_value, 0, kMaxVelocity, kNumberOfBinsMin, kNumberOfBinsMax); // Mapping based on velocity
+//     kNumberOfBins = map((int)filtered_velocity_value, 0, kMaxVelocity, kNumberOfBinsMax, kNumberOfBinsMin);  // Inverse Mapping based on velocity
+//   }
+//   Serial.print("Adjusted Bins: ");
+//   Serial.print((int)filtered_velocity_value);
+//   Serial.print(",");
+//   Serial.println(kNumberOfBins);
+//   mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
+//   GenerateMotionCoupledPseudoForces();
+// }
+
+// void runAlgorithm3() {
+//   // Area based algorithm (Theoretical Algorithm based on Pseudo Forces) TIME COUPLED ASYMMETRIC VIBRATION
+//   // Step 1: Calculate the area under one cycle which is being provided.
+//   // Step 2: Calculate the area of over the movement speed (or basically how many cycles are provided)
+//   // Step 3: Have the same area irrespective of the speed of movement. The way to do this is to play around with more cycles as the speed increases or trigger more individual pulses
+// }
+
+// void runAlgorithm4() {
+//   // Velocity to
+// }
+
+// void runAlgorithm6() {
+//   // Amplitude based algorithm (TESTED)
+//   // This is more like an envelope based algorithm, where the amplitude is increased if the movement speed increases.
+//   // It can also be mapped to the distance, where the amplitude increases as the distance increases.
+//   float kSignalAsymAmpMin = 0.4;
+//   float kSignalAsymAmpMax = 1.0;
+//   if (filtered_sensor_value < kSensorMinValue) {
+//     kSignalAsymAmp = 0;
+//   } else if (filtered_sensor_value >= kSensorMaxValue) {
+//     kSignalAsymAmp = kSignalAsymAmpMax;
+//   } else {
+//     kSignalAsymAmp = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, kSignalAsymAmpMin, kSignalAsymAmpMax);
+//   }
+
+//   signal.amplitude(kSignalAsymAmp);
+//   // if(last_bin_id == mapped_bin_id){StopPulse();}
+//   StopPulse();
+
+//   Serial.print("Adjusted amplitude based on distance: ");
+//   Serial.println(kSignalAsymAmp);
+//   GenerateMotionCoupledPseudoForces();
+// }
+
+// void runAlgorithmBellCurve() {
+//   float kSignalAsymAmpMin = 0.4f;
+//   float bellCurveAmplitude = 1.0f;
+//   // float mu = 0.5f * kMaxVelocity;     // Center of the bell curve (in terms of velocity)
+//   float mu = 0.5f * kSensorMaxValue;  // Center of the bell curve (in terms of velocity)
+//   // float sigma = 0.2f * kMaxVelocity;  // Width of the bell curve
+//   float sigma = 0.2f * kSensorMaxValue;  // Width of the bell curve
+
+//   // float normalizedVelocity = constrain(filtered_velocity_value, 0, kMaxVelocity);  // Normalizing the velocity
+//   float normalizedVelocity = constrain(filtered_sensor_value, kSensorMinValue, kSensorMaxValue);
+//   kSignalAsymAmp = bellCurveAmplitude * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+//   kSignalAsymAmp = kSignalAsymAmpMin + (kSignalAsymAmp * (bellCurveAmplitude - kSignalAsymAmpMin));
+//   signal.amplitude(kSignalAsymAmp);
+
+//   Serial.print("Adjusted amplitude based on distance: ");
+//   Serial.println(kSignalAsymAmp);
+//   StopPulse();
+
+//   GenerateMotionCoupledPseudoForces();
+// }
+
+// void runAlgorithmBellCurveBins() {
+//   float kNumberOfBinsBellMin = 40;
+//   float kNumberOfBinsBell = 100;
+//   float mu = 0.5f * kMaxVelocity;  // Center of the bell curve (in terms of velocity)
+//   // float mu = 0.5f * kSensorMaxValue;     // Center of the bell curve (in terms of velocity)
+//   float sigma = 0.2f * kMaxVelocity;  // Width of the bell curve
+//   // float sigma = 0.2f * kSensorMaxValue;  // Width of the bell curve
+
+//   float normalizedVelocity = constrain(filtered_velocity_value, 0, kMaxVelocity);  // Normalizing the velocity
+//   // float normalizedVelocity = constrain(filtered_sensor_value, kSensorMinValue, kSensorMaxValue);
+//   float bins = kNumberOfBinsBell * exp(-pow((normalizedVelocity - mu), 2) / (2 * pow(sigma, 2)));
+//   kNumberOfBins = round(bins);
+//   // int mappedBins = constrain((int)round(bins), 1, kNumberOfBins);
+//   // kNumberOfBins = mappedBins;
+//   // Serial.print("Bell Curve - Number of bins based on velocity: ");
+//   // Serial.println(kNumberOfBins);
+//   GenerateMotionCoupledPseudoForces();
+// }
 
 void BowArrow(const ParsedData &parsedData) {
   // The more away from the sensor we move, the larger the amplitude
@@ -556,31 +740,20 @@ void loop() {
     sensor_vl53l4cd_2.VL53L4CD_GetResult(&results_2);
   }
 
-  // CalculateArea();
-
   currentTimeVel = millis();
   measuredDistance_1 = results_1.distance_mm;  // make this fast
   measuredDistance_2 = results_2.distance_mm;  // make this fast
   MappingFunction(measuredDistance_1, filtered_sensor_value_1);
   MappingFunction(measuredDistance_2, filtered_sensor_value_2);
-
-  filtered_sensor_value = (measuredDistance_1 + measuredDistance_2) / 2;
-  filtered_sensor_value_new = (filtered_sensor_value_1 + filtered_sensor_value_2) / 2;
-  Serial.print(filtered_sensor_value);
-  Serial.print(",");
-  Serial.println(filtered_sensor_value_new);
-  delay(10);
+  filtered_sensor_value = (filtered_sensor_value_1 + filtered_sensor_value_2) / 2;
 
   currentDistance = (measuredDistance_1 + measuredDistance_2) / 2;
   currentVelocity = (currentDistance - lastDistance);  // / (lastTimeVel - currentTimeVel);
-  filtered_velocity_value = (1.f - kVelocityFilterWeight) * filtered_velocity_value + (kVelocityFilterWeight)*currentVelocity;
-
-  // Serial.println(currentVelocity);
-  // delay(50);
+  filtered_velocity_value = abs((1.f - kVelocityFilterWeight) * filtered_velocity_value + (kVelocityFilterWeight)*currentVelocity);
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
-    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e') {
+    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e' || serial_c == 'f' || serial_c == 'g' || serial_c == 'h' || serial_c == 'i' || serial_c == 'j' || serial_c == 'k') {
       selectedMode = serial_c;
     }
     handleSerialInput(serial_c);
@@ -589,29 +762,39 @@ void loop() {
   switch (selectedMode) {
     case 'a':
       // if (abs(currentVelocity) < kSensorJitterThreshold) {return;}
+      Serial.printf("Bins: %d Amp %f\n", kNumberOfBins, kSignalAsymAmp);
       GenerateMotionCoupledPseudoForces();
-      Serial.println("MCAV_Basic");
       break;
     case 'b':
-      runAlgorithm2();
-      Serial.println("Algorithm 2");
+      LinVel2Amp1();
       break;
     case 'c':
-      HapticMagnets();
-      Serial.println("Magnets");
+      LinVel2Bin2();
       break;
     case 'd':
-      Serial.println("Do Nothing");
-      return;
+      LinDisp2Amp3();
       break;
     case 'e':
-      GeneratePseudoForces();
+      LinDisp2Bin4();
       break;
     case 'f':
-      runAlgorithm3();
+      GaussVel2Amp5();
       break;
     case 'g':
-      runAlgorithm4();
+      GaussVel2Bin6();
+      break;
+    case 'h':
+      GaussDisp2Amp7();
+      break;
+    case 'i':
+      GaussDisp2Bin8();
+      break;
+    case 'j':
+      GeneratePseudoForces();
+      break;
+    case 'k':
+      Serial.println("Do Nothing");
+      StopPulse();
       break;
   }
   lastTimeVel = currentTimeVel;
