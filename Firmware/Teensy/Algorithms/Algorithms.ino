@@ -11,8 +11,6 @@
 #define VERSION "v1.1.0"
 
 // TODO:
-// 2. Check if the Grain Number actually changes (Maybe print time, along with grain number)
-// 3. Writing the function for algorithm 2, time-coupled algorithm
 // 4. Writing the functions for the other 2 applications
 
 // Our algorithms are motion-coupled
@@ -128,19 +126,19 @@ float deltaTimePeriod;
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
 struct ParsedData {
-  int objectID;
+  char objectID;
   int state;
   float value;
 };
 
 ParsedData parseSerialData(const String &data) {
-  ParsedData parsedData = { 0, 0, 0.0f };
+  ParsedData parsedData = { '\0', 0, 0.0f };
 
   int firstComma = data.indexOf(',');
   int secondComma = data.indexOf(',', firstComma + 1);
 
   if (firstComma != -1 && secondComma != -1) {
-    parsedData.objectID = data.substring(0, firstComma).toInt();
+    parsedData.objectID = data.charAt(0);
     parsedData.state = data.substring(firstComma + 1, secondComma).toInt();
     parsedData.value = data.substring(secondComma + 1).toFloat();
   }
@@ -490,6 +488,7 @@ void GaussVel2Bin6() {
 }
 
 void GaussDisp2Amp7() {
+  kNumberOfBins = 200;
   float kSignalAsymAmpMin = 0.4f;
   float bellCurveAmplitude = 1.0f;
   float mu = 0.5f * kSensorMaxValue;     // Center of the bell curve (in terms of max Sensor Value)
@@ -526,9 +525,6 @@ void TimeAreaBasedAlgo() {}
 
 
 void BowArrow(const ParsedData &parsedData) {
-  // The more away from the sensor we move, the larger the amplitude
-  // So basically, we need to map the position to the amplitude.
-  // This mapping algorithm should use the a-star (Generate Increasing Pseudo Forces) algorithms we might get
   switch (parsedData.state) {
     case 0:  // No Stretch
       kSignalAsymAmp = 0;
@@ -580,6 +576,7 @@ void setup() {
 }
 
 void loop() {
+  Serial.println("Hi");
   uint8_t NewDataReady_1 = 0;
   uint8_t NewDataReady_2 = 0;
   VL53L4CD_Result_t results_1;
@@ -624,10 +621,19 @@ void loop() {
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
-    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e' || serial_c == 'f' || serial_c == 'g' || serial_c == 'h' || serial_c == 'i' || serial_c == 'j' || serial_c == 'k') {
+    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'B' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e' || serial_c == 'f' || serial_c == 'g' || serial_c == 'h' || serial_c == 'i' || serial_c == 'j' || serial_c == 'k') {
       selectedMode = serial_c;
     }
     handleSerialInput(serial_c);
+    String receivedData = Serial.readStringUntil('\n');
+    ParsedData parsedData = parseSerialData(receivedData);
+
+    // Using `parsedData.objectID` as a char to select the correct function
+    switch (parsedData.objectID) {
+      case 'B':  // Bow and Arrow
+        BowArrow(parsedData);
+        break;
+    }
   }
 
   switch (selectedMode) {
@@ -665,6 +671,9 @@ void loop() {
       break;
     case 'k':
       Serial.println("Do Nothing");
+      kNumberOfBins = 60;
+      kSignalAsymAmp = 1.0;
+      signal.amplitude(kSignalAsymAmp);
       StopPulse();
       break;
   }
