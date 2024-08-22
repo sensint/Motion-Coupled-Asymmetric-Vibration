@@ -10,9 +10,6 @@
 
 #define VERSION "v1.1.0"
 
-// TODO:
-// 4. Writing the functions for the other 2 applications
-
 // Our algorithms are motion-coupled
 
 enum class Waveform : short {
@@ -33,7 +30,6 @@ enum class Waveform : short {
 
 char selectedMode = '\0';
 char amplitude_char;
-bool modeRunning = false;
 
 //============ Velocity to Amplitude Mapping ============
 unsigned long lastTimeVel = 0;
@@ -125,26 +121,6 @@ float deltaTimePeriod;
 
 //=========== serial ===========
 static constexpr int kBaudRate = 115200;
-struct ParsedData {
-  char objectID;
-  int state;
-  float value;
-};
-
-ParsedData parseSerialData(const String &data) {
-  ParsedData parsedData = { '\0', 0, 0.0f };
-
-  int firstComma = data.indexOf(',');
-  int secondComma = data.indexOf(',', firstComma + 1);
-
-  if (firstComma != -1 && secondComma != -1) {
-    parsedData.objectID = data.charAt(0);
-    parsedData.state = data.substring(firstComma + 1, secondComma).toInt();
-    parsedData.value = data.substring(secondComma + 1).toFloat();
-  }
-
-  return parsedData;
-}
 
 void SetupSerial() {
   while (!Serial && millis() < 2000)
@@ -319,17 +295,6 @@ void MappingFunction(uint16_t measuredDistance, float &filtered_sensor_value) {
     filtered_sensor_value = kSensorMinValue;
   }
   mapped_bin_id = map(filtered_sensor_value, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
-}
-
-void VelocityMappingFunction() {
-  filtered_velocity_value = (1.f - kVelocityFilterWeight) * filtered_velocity_value + (kVelocityFilterWeight)*currentVelocity;
-  if (filtered_velocity_value < kMinVelocity) {
-    filtered_velocity_value = 0;
-  }
-  if (filtered_velocity_value >= kMaxVelocity) {
-    filtered_velocity_value = kMaxVelocity;
-  }
-  mapped_bin_id = map(filtered_velocity_value, 0, kMaxVelocity, 0, kNumberOfBins);
 }
 
 void handleSerialInput(char serial_c) {
@@ -521,46 +486,6 @@ void GaussDisp2Bin8() {
   GenerateMotionCoupledPseudoForces();
 }
 
-void TimeAreaBasedAlgo() {}
-
-
-void BowArrow(const ParsedData &parsedData) {
-  switch (parsedData.state) {
-    case 0:  // No Stretch
-      kSignalAsymAmp = 0;
-      StopPulse();
-      Serial.println("BowArrow - No Stretch");
-      break;
-    case 1:
-      kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
-      signal.amplitude(kSignalAsymAmp);
-      Serial.print("BowArrow - Stretched with percent stretch: ");
-      Serial.println(parsedData.value);
-      break;
-  }
-  GenerateMotionCoupledPseudoForces();
-}
-
-void WalkTheDog() {
-  // Walk-the-dog: <Object_Identifier, State, percent_pull>; State: 0 (no_pull); State: 1 (sniffing); State: 2 (continuous pull).
-  // The sniffing might need further definitions probably.
-}
-
-void HapticMagnets() {
-  // Magnets: <Object_Identifier, State, distance>; State: 0 (repel); State: 1 (attract)
-  //   float distanceThresholdMagnets;
-  //   float distanceBetweenMagnets; // Will be recieved over serial
-  //   if (distanceBetweenMagnets > distanceThresholdMagnets){
-  //     return;
-  //   } else{
-  //     if (magnetMode == modeAttract){
-  //       // Generate Continuous Positive / Negative Pseudo Forces on both hands with Amplitude increasing based on the distance between the magnets
-  //     } else{
-  //       // Generate Continous One Positive - One Negative Pseudo force on both hands with amplitude increasing based on the distance between the magnets.
-  //     }
-  //   }
-}
-
 void setup() {
   SetupSerial();
   DEV_I2C1.begin();  // Initialize I2C bus.
@@ -576,7 +501,6 @@ void setup() {
 }
 
 void loop() {
-  Serial.println("Hi");
   uint8_t NewDataReady_1 = 0;
   uint8_t NewDataReady_2 = 0;
   VL53L4CD_Result_t results_1;
@@ -621,19 +545,10 @@ void loop() {
 
   if (Serial.available()) {
     auto serial_c = (char)Serial.read();
-    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'B' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e' || serial_c == 'f' || serial_c == 'g' || serial_c == 'h' || serial_c == 'i' || serial_c == 'j' || serial_c == 'k') {
+    if (serial_c == 'a' || serial_c == 'b' || serial_c == 'c' || serial_c == 'd' || serial_c == 'e' || serial_c == 'f' || serial_c == 'g' || serial_c == 'h' || serial_c == 'i' || serial_c == 'j' || serial_c == 'k') {
       selectedMode = serial_c;
     }
     handleSerialInput(serial_c);
-    String receivedData = Serial.readStringUntil('\n');
-    ParsedData parsedData = parseSerialData(receivedData);
-
-    // Using `parsedData.objectID` as a char to select the correct function
-    switch (parsedData.objectID) {
-      case 'B':  // Bow and Arrow
-        BowArrow(parsedData);
-        break;
-    }
   }
 
   switch (selectedMode) {
