@@ -518,6 +518,8 @@ void loop() {
         break;
       default:
         Serial.println("Unknown Scene Identifier");
+        StopPulse();
+        signal.amplitude(0);
         break;
     }
   }
