@@ -13,7 +13,7 @@
 // Controller algorithm needs to be purely controlled through Unity
 // Customized algorithm for BowArrow and WeightsInBox is Linear Amplitude Modulation
 // Customized algorithm for Magnets is based on Magnetism
-// Bi-directionality code for Magnets! 
+// Bi-directionality code for Magnets!
 
 enum class Waveform : short {
   kSine = 0,
@@ -315,6 +315,9 @@ void BowArrow(const ParsedData &parsedData) {
           break;
       }
       break;
+    default:
+      Serial.println("BowArrow - Unknown Algorithm");
+      break;
   }
 }
 
@@ -372,6 +375,9 @@ void WeightsInBoxes(const ParsedData &parsedData) {
           GenerateMotionCoupledPseudoForces();
           break;
       }
+      break;
+    default:
+      Serial.println("WeightsInBoxes - Unknown Algorithm");
       break;
   }
 }
@@ -450,6 +456,9 @@ void HapticMagnets(const ParsedData &parsedData) {
           break;
       }
       break;
+    default:
+      Serial.println("Magnets - Unknown Algorithm");
+      break;
   }
 }
 
@@ -487,11 +496,12 @@ void setup() {
 void loop() {
 
   if (Serial.available()) {
-    auto serial_c = (char)Serial.read();
-    if (serial_c == 'd' || serial_c == 'e') {
-      selectedMode = serial_c;
-    }
+    // auto serial_c = (char)Serial.read();
+    // if (serial_c == 'd' || serial_c == 'e') {
+    //   selectedMode = serial_c;
+    // }
     String data = Serial.readStringUntil('\n');
+    Serial.println(data);
     ParsedData parsedData = parseSerialData(data);
     measuredDistance = parsedData.value * 100;
     MappingFunction();
@@ -506,20 +516,24 @@ void loop() {
       case 'W':  // Weight in Boxes
         WeightsInBoxes(parsedData);
         break;
+      default:
+        Serial.println("Unknown Scene Identifier");
+        break;
     }
   }
 
-  switch (selectedMode) {
-    case 'e':
-      Serial.println("Exposure Pseudo Forces");
-      GeneratePseudoForces();
-      break;
-    case 'd':
-      Serial.println("Do Nothing");
-      kNumberOfBins = 60;
-      kSignalAsymAmp = 1.0;
-      signal.amplitude(kSignalAsymAmp);
-      StopPulse();
-      break;
-  }
+  // switch (selectedMode) {
+  //   case 'e':
+  //     Serial.println("Exposure Pseudo Forces");
+  //     GeneratePseudoForces();
+  //     break;
+  //   case 'd':
+  //     Serial.println("Do Nothing");
+  //     delay(10);
+  //     kNumberOfBins = 60;
+  //     kSignalAsymAmp = 1.0;
+  //     signal.amplitude(kSignalAsymAmp);
+  //     StopPulse();
+  //     break;
+  // }
 }
