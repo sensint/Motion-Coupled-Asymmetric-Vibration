@@ -356,7 +356,8 @@ void WeightsInBoxes(const ParsedData &parsedData) {
         case 1:
           Serial.print("WeightsInBoxes - MCPF - Lifted with percent lift: ");
           Serial.println(parsedData.value);
-          kSignalAsymAmp = parsedData.value;
+          kSignalAsymAmp = parsedData.value; // If linear mapped
+          // kSignalAsymAmp = 1.0; // If weight remains same
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
           GenerateMotionCoupledPseudoForces();
@@ -370,6 +371,10 @@ void WeightsInBoxes(const ParsedData &parsedData) {
 }
 
 void HapticMagnets(const ParsedData &parsedData) {
+  // Give actuators with same forces towards each other; If repel is played, the forces should be in the opposite direction.
+  // One way could be to flip the actuators on the table (Or ask the experimenter to flip them in hand)
+  // If either hand is flipped, the magents would repel.
+  // If both hands are flipped, the magnets would attract again.
   switch (parsedData.algorithm) {
     case 0:  // Controller
       switch (parsedData.state) {
@@ -425,21 +430,6 @@ void HapticMagnets(const ParsedData &parsedData) {
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
           GenerateMotionCoupledPseudoForces();
-          break;
-      }
-      break;
-    case 3:  // Customized Algorithm
-      switch (parsedData.state) {
-        case 0:
-          DoNothing();
-          break;
-        case 1:
-          Serial.print("Write code for magnetism: ");
-          Serial.println(parsedData.value);
-          break;
-        case 2:
-          Serial.print("Write code for magnetism: ");
-          Serial.println(parsedData.value);
           break;
       }
       break;
