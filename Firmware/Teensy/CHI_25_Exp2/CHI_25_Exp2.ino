@@ -375,6 +375,14 @@ void HapticMagnets(const ParsedData &parsedData) {
   // One way could be to flip the actuators on the table (Or ask the experimenter to flip them in hand)
   // If either hand is flipped, the magents would repel.
   // If both hands are flipped, the magnets would attract again.
+
+  float a = -2.0;
+  float b = 3.0;
+  float c = -1.0;
+  float d = 0.5;
+
+  float normalizedDistance = parsedData.value;
+
   switch (parsedData.algorithm) {
     case 0:  // Controller
       switch (parsedData.state) {
@@ -400,6 +408,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           Serial.print("Magnets - CPF - Repel with distance: ");
           Serial.println(parsedData.value);
           kSignalAsymAmp = parsedData.value;  // If linear mapped
+          // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           GeneratePseudoForcesBasic();
           break;
@@ -407,6 +416,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
           kSignalAsymAmp = parsedData.value;  // If linear mapped
+          // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           GeneratePseudoForcesBasic();
           break;
@@ -421,6 +431,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           Serial.print("Magnets - CPF - Repel with distance: ");
           Serial.println(parsedData.value);
           kSignalAsymAmp = parsedData.value; // If linear mapped
+          // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
           GenerateMotionCoupledPseudoForces();
@@ -429,6 +440,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
           kSignalAsymAmp = parsedData.value; // If linear mapped
+          // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
           GenerateMotionCoupledPseudoForces();
