@@ -397,18 +397,18 @@ void HapticMagnets(const ParsedData &parsedData) {
           DoNothing();
           break;
         case 1:
-          // kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
-          // signal.amplitude(kSignalAsymAmp);
           Serial.print("Magnets - CPF - Repel with distance: ");
           Serial.println(parsedData.value);
-          GeneratePseudoForces();
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
+          signal.amplitude(kSignalAsymAmp);
+          GeneratePseudoForcesBasic();
           break;
         case 2:
-          // kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
-          // signal.amplitude(kSignalAsymAmp);
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
-          GeneratePseudoForces();
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
+          signal.amplitude(kSignalAsymAmp);
+          GeneratePseudoForcesBasic();
           break;
       }
       break;
@@ -418,17 +418,19 @@ void HapticMagnets(const ParsedData &parsedData) {
           DoNothing();
           break;
         case 1:
-          // kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
-          // signal.amplitude(kSignalAsymAmp);
           Serial.print("Magnets - CPF - Repel with distance: ");
           Serial.println(parsedData.value);
+          kSignalAsymAmp = parsedData.value; // If linear mapped
+          signal.amplitude(kSignalAsymAmp);
+          StopPulse();
           GenerateMotionCoupledPseudoForces();
           break;
         case 2:
-          // kSignalAsymAmp = map(parsedData.value, 0, 100, 0.2f, 1.0f);
-          // signal.amplitude(kSignalAsymAmp);
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
+          kSignalAsymAmp = parsedData.value; // If linear mapped
+          signal.amplitude(kSignalAsymAmp);
+          StopPulse();
           GenerateMotionCoupledPseudoForces();
           break;
       }
