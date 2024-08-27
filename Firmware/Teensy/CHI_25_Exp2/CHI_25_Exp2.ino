@@ -9,9 +9,6 @@
 
 #define VERSION "v1.1.0"
 
-// Customized algorithm for Magnets is based on Magnetism
-// Bi-directionality code for Magnets!
-
 enum class Waveform : short {
   kSine = 0,
   kSawtooth = 1,
@@ -84,6 +81,7 @@ struct ParsedData {
   int algorithm;
   int state;
   float value;
+  float multiplier;
 };
 
 ParsedData parseSerialData(const String &data) {
@@ -92,12 +90,14 @@ ParsedData parseSerialData(const String &data) {
   int firstComma = data.indexOf(',');
   int secondComma = data.indexOf(',', firstComma + 1);
   int thirdComma = data.indexOf(',', secondComma + 1);
+  int fourthComma = data.indexOf(',', thirdComma + 1);
 
   if (firstComma != -1 && secondComma != -1 && thirdComma != -1) {
     parsedData.scene = data.charAt(0);  // Extract first character as Scene ID
     parsedData.algorithm = data.substring(firstComma + 1, secondComma).toInt();
     parsedData.state = data.substring(secondComma + 1, thirdComma).toInt();
     parsedData.value = data.substring(thirdComma + 1).toFloat();
+    parsedData.multiplier = data.substring(fourthComma + 1).toFloat();
   }
 
   return parsedData;
@@ -121,6 +121,18 @@ void SetupAudio() {
 void StartPulsePosPF() {
   signal.begin(kSignalWaveform);
   signal.arbitraryWaveform(dat, 170);
+  signal.frequency(kSignalFrequencyHz);
+  signal.phase(0.0);
+  signal.amplitude(kSignalAsymAmp);
+  pulse_time_us = 0;
+  is_vibrating = true;
+  // Serial.printf("Start Pos pulse \n\t bins: %d", mapped_bin_id);
+  // Serial.println(F("=====================================================\n\n"));
+}
+
+void StartPulseRepelPF(){
+  signal.begin(kSignalWaveform);
+  signal.arbitraryWaveform(negDatTrial, 170);
   signal.frequency(kSignalFrequencyHz);
   signal.phase(0.0);
   signal.amplitude(kSignalAsymAmp);
@@ -240,6 +252,13 @@ void GeneratePseudoForcesBasic() {
   signal.amplitude(kSignalAsymAmp);
 }
 
+void GeneratePseudoForcesBasicRepel(){
+  signal.begin(kSignalWaveform);
+  signal.arbitraryWaveform(negDatTrial, 170);
+  signal.frequency(kSignalFrequencyHz);
+  signal.amplitude(kSignalAsymAmp);
+}
+
 void GenerateMotionCoupledPseudoForces() {
   if (mapped_bin_id < last_bin_id) {
     // Uncomment below to stop the current vibration and play the next one.
@@ -258,6 +277,22 @@ void GenerateMotionCoupledPseudoForces() {
     // }
 
     StartPulseNegPF();
+    last_bin_id = mapped_bin_id;
+    last_triggered_sensor_val = filtered_sensor_value;
+  }
+
+  if (is_vibrating && pulse_time_us >= kSignalDurationUs) {
+    StopPulse();
+  }
+}
+
+void GenerateMotionCoupledPseudoForcesRepel(){
+  if (mapped_bin_id < last_bin_id) {
+    StartPulseRepelPF();
+    last_bin_id = mapped_bin_id;
+    last_triggered_sensor_val = filtered_sensor_value;
+  } else if (mapped_bin_id > last_bin_id) {
+    StartPulseRepelPF();
     last_bin_id = mapped_bin_id;
     last_triggered_sensor_val = filtered_sensor_value;
   }
@@ -341,8 +376,10 @@ void WeightsInBoxes(const ParsedData &parsedData) {
         case 1:
           Serial.print("WeightsInBoxes - CPF - Lifted with percent lift: ");
           Serial.println(parsedData.value);
-          kSignalAsymAmp = parsedData.value;  // If linear mapped
-          // kSignalAsymAmp = 1.0; // If weight remains same
+          if (parsedData.value == 0.25){kSignalAsymAmp = 0.4;}
+          if (parsedData.value == 0.5){kSignalAsymAmp = 0.7;}
+          if (parsedData.value == 1.0){kSignalAsymAmp = 1.0;}
+          // kSignalAsymAmp = parsedData.value;  // If linear mapped
           signal.amplitude(kSignalAsymAmp);
           GeneratePseudoForcesBasic();
           break;
@@ -356,8 +393,10 @@ void WeightsInBoxes(const ParsedData &parsedData) {
         case 1:
           Serial.print("WeightsInBoxes - MCPF - Lifted with percent lift: ");
           Serial.println(parsedData.value);
-          kSignalAsymAmp = parsedData.value; // If linear mapped
-          // kSignalAsymAmp = 1.0; // If weight remains same
+          if (parsedData.value == 0.25){kSignalAsymAmp = 0.4;}
+          if (parsedData.value == 0.5){kSignalAsymAmp = 0.7;}
+          if (parsedData.value == 1.0){kSignalAsymAmp = 1.0;}
+          // kSignalAsymAmp = parsedData.value; // If linear mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
           GenerateMotionCoupledPseudoForces();
@@ -371,17 +410,15 @@ void WeightsInBoxes(const ParsedData &parsedData) {
 }
 
 void HapticMagnets(const ParsedData &parsedData) {
-  // Give actuators with same forces towards each other; If repel is played, the forces should be in the opposite direction.
-  // One way could be to flip the actuators on the table (Or ask the experimenter to flip them in hand)
   // If either hand is flipped, the magents would repel.
   // If both hands are flipped, the magnets would attract again.
 
-  float a = -2.0;
-  float b = 3.0;
-  float c = -1.0;
-  float d = 0.5;
+  // float a = -2.0;
+  // float b = 3.0;
+  // float c = -1.0;
+  // float d = 0.5;
 
-  float normalizedDistance = parsedData.value;
+  // float normalizedDistance = parsedData.value;
 
   switch (parsedData.algorithm) {
     case 0:  // Controller
@@ -410,7 +447,8 @@ void HapticMagnets(const ParsedData &parsedData) {
           kSignalAsymAmp = parsedData.value;  // If linear mapped
           // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
-          GeneratePseudoForcesBasic();
+          GeneratePseudoForcesBasicRepel();
+          
           break;
         case 2:
           Serial.print("Magnets - CPF - Attract with distance: ");
@@ -434,7 +472,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
-          GenerateMotionCoupledPseudoForces();
+          GenerateMotionCoupledPseudoForcesRepel();
           break;
         case 2:
           Serial.print("Magnets - CPF - Attract with distance: ");
