@@ -54,9 +54,9 @@ unsigned long measuredDistance;
 int sensorSamplingFrequency = 100;
 
 //=========== signal generator ===========
-static uint16_t kNumberOfBins = 100;
+static uint16_t kNumberOfBins = 150;
 static constexpr short kSignalWaveform = static_cast<short>(Waveform::kArbitrary);
-static uint32_t kSignalDurationUs = 25 * 1000;  // in microseconds
+static uint32_t kSignalDurationUs = 50 * 1000;  // in microseconds
 static float kSignalFrequencyHz = 40.f;
 float kSignalAsymAmp = 1.f;
 static constexpr float kSignalContinuousAmp = 1.0f;
@@ -130,7 +130,7 @@ void StartPulsePosPF() {
   // Serial.println(F("=====================================================\n\n"));
 }
 
-void StartPulseRepelPF(){
+void StartPulseRepelPF() {
   signal.begin(kSignalWaveform);
   signal.arbitraryWaveform(negDatTrial, 170);
   signal.frequency(kSignalFrequencyHz);
@@ -252,7 +252,7 @@ void GeneratePseudoForcesBasic() {
   signal.amplitude(kSignalAsymAmp);
 }
 
-void GeneratePseudoForcesBasicRepel(){
+void GeneratePseudoForcesBasicRepel() {
   signal.begin(kSignalWaveform);
   signal.arbitraryWaveform(negDatTrial, 170);
   signal.frequency(kSignalFrequencyHz);
@@ -286,7 +286,7 @@ void GenerateMotionCoupledPseudoForces() {
   }
 }
 
-void GenerateMotionCoupledPseudoForcesRepel(){
+void GenerateMotionCoupledPseudoForcesRepel() {
   if (mapped_bin_id < last_bin_id) {
     StartPulseRepelPF();
     last_bin_id = mapped_bin_id;
@@ -375,12 +375,9 @@ void WeightsInBoxes(const ParsedData &parsedData) {
           break;
         case 1:
           Serial.print("WeightsInBoxes - CPF - Lifted with percent lift: ");
-          Serial.println(parsedData.value);
-          if (parsedData.value == 0.25){kSignalAsymAmp = 0.4;}
-          if (parsedData.value == 0.5){kSignalAsymAmp = 0.7;}
-          if (parsedData.value == 1.0){kSignalAsymAmp = 1.0;}
-          // kSignalAsymAmp = parsedData.value;  // If linear mapped
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
           signal.amplitude(kSignalAsymAmp);
+          Serial.println(kSignalAsymAmp);
           GeneratePseudoForcesBasic();
           break;
       }
@@ -392,12 +389,11 @@ void WeightsInBoxes(const ParsedData &parsedData) {
           break;
         case 1:
           Serial.print("WeightsInBoxes - MCPF - Lifted with percent lift: ");
-          Serial.println(parsedData.value);
-          if (parsedData.value == 0.25){kSignalAsymAmp = 0.4;}
-          if (parsedData.value == 0.5){kSignalAsymAmp = 0.7;}
-          if (parsedData.value == 1.0){kSignalAsymAmp = 1.0;}
-          // kSignalAsymAmp = parsedData.value; // If linear mapped
+          measuredDistance = parsedData.multiplier * 100;
+          mapped_bin_id = map(measuredDistance, kSensorMinValue, kSensorMaxValue, 0, kNumberOfBins);
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
           signal.amplitude(kSignalAsymAmp);
+          Serial.println(kSignalAsymAmp);
           StopPulse();
           GenerateMotionCoupledPseudoForces();
           break;
@@ -448,7 +444,7 @@ void HapticMagnets(const ParsedData &parsedData) {
           // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           GeneratePseudoForcesBasicRepel();
-          
+
           break;
         case 2:
           Serial.print("Magnets - CPF - Attract with distance: ");
@@ -468,7 +464,7 @@ void HapticMagnets(const ParsedData &parsedData) {
         case 1:
           Serial.print("Magnets - CPF - Repel with distance: ");
           Serial.println(parsedData.value);
-          kSignalAsymAmp = parsedData.value; // If linear mapped
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
           // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
@@ -477,7 +473,7 @@ void HapticMagnets(const ParsedData &parsedData) {
         case 2:
           Serial.print("Magnets - CPF - Attract with distance: ");
           Serial.println(parsedData.value);
-          kSignalAsymAmp = parsedData.value; // If linear mapped
+          kSignalAsymAmp = parsedData.value;  // If linear mapped
           // kSignalAsymAmp = a * pow(normalizedDistance, 3) + b * pow(normalizedDistance, 2) + c * normalizedDistance + d; // Cubic Mapped
           signal.amplitude(kSignalAsymAmp);
           StopPulse();
@@ -554,7 +550,7 @@ void loop() {
         break;
       default:
         Serial.println("Unknown Scene Identifier");
-        // StopPulse();
+        StopPulse();
         // signal.amplitude(0);
         break;
     }
