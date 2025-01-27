@@ -25,15 +25,15 @@
     <img src="assets/img/sensint_logo.png" alt="Logo" width="121" height="100">
   </a>
 
-<h3 align="center">Foot Pedal Control - The Role of Vibrotactile Feedback in Performance and Perceived Control</h3>
+<h3 align="center">Motion-Coupled Asymmetric Vibration for Pseudo Force Rendering in Virtual Reality</h3>
 
   <p align="center">
     <b>We'd love to get your feedback and know if you want to explore this research further.</b>
     <br />
 <!--     <br />
-    <a href="https://github.com/sensint/Servo_Haptics/issues">Report Bug</a>
+    <a href="https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/issues">Report Bug</a>
     ·
-    <a href="https://github.com/sensint/Servo_Haptics/issues">Request Feature</a> -->
+    <a href="https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/issues">Request Feature</a> -->
   </p>
 </div>
 
