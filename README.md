@@ -42,8 +42,7 @@
 ## About The Project
 
 ![Banner images][banner-image]
-
-Feedback on foot pedals affects the user's ability to control dynamic systems. However, the interplay between objective performance and user's perceived control has not been formally investigated for foot pedals. Thus, we evaluated this interplay for 4 pedal configurations: rigid and compliant pedals with and without vibrotactile feedback synchronized with user action. We conducted a within-subjects study with 12 participants, consisting of (1) a one-dimensional following task, (2) a driving task in VR to measure user performance, and (3) qualitative interviews for understanding users' subjective control. The objective performance metrics showed no significant differences between the pedal configurations. In contrast, analysis of the interviews revealed that motion-coupled vibrotactile feedback increases the participants' perceived control. These results offer possibilities for designing customized pedal feedback without compromising performance. This research emphasizes evaluating objective performance as well as perceived control while assessing control strategies for existing and novel interfaces.
+In Virtual Reality (VR), rendering realistic forces is crucial for immersion, but traditional vibrotactile feedback fails to convey force sensations effectively. Studies of asymmetric vibrations that elicit pseudo forces show promise but are inherently tied to unwanted vibrations, reducing realism. Leveraging sensory attenuation to reduce the perceived intensity of self-generated vibrations during user movement, we present a novel algorithm that couples asymmetric vibrations with user motion, which mimics self-generated sensations. Our psychophysics study with 12 participants shows that motion-coupled asymmetric vibration attenuates the experience of vibration (equivalent to a \textasciitilde 30\% reduction in vibration-amplitude) while preserving the experience of force, compared to continuous asymmetric vibrations (state-of-the-art). We demonstrate the effectiveness of our approach in VR through three scenarios: shooting arrows, lifting weights, and simulating haptic magnets. Results revealed that participants preferred forces elicited by motion-coupled asymmetric vibration for tasks like shooting arrows and lifting weights. This research highlights the potential of motion-coupled asymmetric vibrations, offers new insights into sensory attenuation, and advances force rendering in VR.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -142,14 +141,14 @@ Project Link: [https://github.com/sensint/HapticGasPedal](https://github.com/sen
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/sensint/HapticGasPedal.svg?style=for-the-badge
-[contributors-url]: https://github.com/sensint/HapticGasPedal/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/sensint/HapticGasPedal.svg?style=for-the-badge
-[forks-url]: https://github.com/sensint/HapticGasPedal/network/members
-[stars-shield]: https://img.shields.io/github/stars/sensint/HapticGasPedal.svg?style=for-the-badge
-[stars-url]: https://github.com/sensint/HapticGasPedal/stargazers
-[issues-shield]: https://img.shields.io/github/issues/sensint/HapticGasPedal.svg?style=for-the-badge
-[issues-url]: https://github.com/sensint/HapticGasPedal/issues
-[license-shield]: https://img.shields.io/github/license/sensint/HapticGasPedal.svg?style=for-the-badge
-[license-url]: https://github.com/sensint/HapticGasPedal/blob/master/LICENSE
-[banner-image]: assets/img/Banner_GasPedal.png
+[contributors-shield]: https://img.shields.io/github/contributors/sensint/Motion-Coupled-Asymmetric-Vibration.svg?style=for-the-badge
+[contributors-url]: https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/sensint/Motion-Coupled-Asymmetric-Vibration.svg?style=for-the-badge
+[forks-url]: https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/network/members
+[stars-shield]: https://img.shields.io/github/stars/sensint/Motion-Coupled-Asymmetric-Vibration.svg?style=for-the-badge
+[stars-url]: https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/stargazers
+[issues-shield]: https://img.shields.io/github/issues/sensint/Motion-Coupled-Asymmetric-Vibration.svg?style=for-the-badge
+[issues-url]: https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/issues
+[license-shield]: https://img.shields.io/github/license/sensint/Motion-Coupled-Asymmetric-Vibration.svg?style=for-the-badge
+[license-url]: https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration/blob/master/LICENSE
+[banner-image]: assets/img/Banner_MCAV.png
