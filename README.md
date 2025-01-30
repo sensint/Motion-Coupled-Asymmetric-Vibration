@@ -140,7 +140,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 Sensorimotor Interaction Group - [website](https://sensint.mpi-inf.mpg.de/) - [@sensintgroup](https://twitter.com/sensintgroup)
 
-Project Link: [https://github.com/sensint/HapticGasPedal](https://github.com/sensint/HapticGasPedal)
+Project Link: [https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration](https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
