@@ -59,12 +59,32 @@ In Virtual Reality (VR), rendering realistic forces is crucial for immersion, bu
 Download the code from the GitHub website or clone repo using your favorite git-client software or with the following command:
 
    ```sh
-   git clone https://github.com/sensint/HapticGasPedal.git
+   git clone https://github.com/sensint/Motion-Coupled-Asymmetric-Vibration.git
    ```
-- To run the processing script (Targetting_Task.pde) as is, please add all the trajectories in the same folder as the processing file.
-- Assign the right port for the serial communication.
-- Run the script
 
+##### Experiment 1
++ The processing code: CHI_25_Exp1.pde (processing/CHI_25_Exp1) can be run by selecting the appropriate serial port.
++ Further, the sequence of (stimuli)(intensity) needs to be provided to have the code run in sequence.
++ For the CHI_25_Exp1.ino (Firmware/ Teensy/ CHI_25_Exp1) code, the following letters enter through the serial monitor will play the corresponding stimuli at the corresponding amplitude: For instance, a1 will play the stimuli a with 70% of max amplitude. The stimuli are as follows:
+	- a: motion-coupled asymmetric vibration
+	- b: motion-decoupled asymmetric vibration
+	- c: continuous asymmetric vibration (user moves)
+	- d: continuous asymmetric vibration (user stationary)
+
+  The Intensity_Level refers to the three levels of intensity:
+	- 0: amplitude at 40% the maximum level
+	- 1: amplitude at 70% the maximum level
+	- 2: amplitude at 100% the maximum level
+
++ Each combination of a character and number would be played for 15 seconds by default.
++ Playing condition 'a' is a prerequisite for playing the conditions 'b', 'c', 'd'
+
+##### Experiment 2
++ Open the Exp2_Unity directory in Unity version 2022.3.34f1 or higher.
++ You should be able to see the different scenes (Bow-Arrow, Weights, Magnets). In each scene, you can choose the mapping type, vibration type.
++ Key Press 'L' should toggle the visual On and Off.
++ Upload the CHI_25_Exp2.ino (Firmware/Teensy/CHI_25_Exp2) code to the teensy 4.1 microcontroller.
++ Changing things in Unity would reflect on the actuator once all the physical connections are made.
 
 ### Firmware
 
@@ -87,7 +107,7 @@ Download and install the [Teensyduino](https://www.pjrc.com/teensy/td_download.h
 
 ### Hardware
 
-This project is based on the Teensy microcontroller and the [PT8211 Audio Kit](https://www.pjrc.com/store/pt8211_kit.html). For understanding the hardware and the underlying principles, please refer to [Haptic Servos](https://dl.acm.org/doi/full/10.1145/3544548.3580716).
+This project is based on the Teensy microcontroller and the [PT8211 Audio Kit](https://www.pjrc.com/store/pt8211_kit.html). For understanding the hardware and the underlying principles, please refer to [Haptic Servos](https://dl.acm.org/doi/full/10.1145/3544548.3580716). The amplifier used for rendering pseudo forces was [Visaton 2.2](https://www.visaton.de/en/products/accessories/amplifiers/amp-22)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
