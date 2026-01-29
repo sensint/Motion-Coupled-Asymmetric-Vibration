@@ -107,7 +107,7 @@ Download and install the [Teensyduino](https://www.pjrc.com/teensy/td_download.h
 
 ### Hardware
 
-This project is based on the Teensy microcontroller and the [PT8211 Audio Kit](https://www.pjrc.com/store/pt8211_kit.html). For understanding the hardware and the underlying principles, please refer to [Haptic Servos](https://dl.acm.org/doi/full/10.1145/3544548.3580716). The amplifier used for rendering pseudo forces was [Visaton 2.2](https://www.visaton.de/en/products/accessories/amplifiers/amp-22)
+This project is based on the Teensy microcontroller and the [PT8211 Audio Kit](https://www.pjrc.com/store/pt8211_kit.html). For understanding the hardware and the underlying principles, please refer to [Haptic Servos](https://dl.acm.org/doi/full/10.1145/3544548.3580716). The amplifier used for rendering pseudo forces was [Visaton 2.2](https://www.visaton.de/en/products/accessories/amplifiers/amp-22). The virtual reality scenes were run on a Meta Quest 3 headset and it's controllers were used for rendering controller only vibrotactile feedback.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
